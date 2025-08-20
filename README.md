@@ -55,8 +55,8 @@ Since you are installing the app directly and not from the Google Play Store, yo
 ### Getting Started
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/YourUsername/YourRepositoryName.git
-    cd YourRepositoryName
+    git clone https://github.com/SoumadeepChoudury/DoIt.git
+    cd DoIt/doit
     ```
 
 2.  **Get the dependencies:**
@@ -96,3 +96,4 @@ A: That's the goal! For now, this direct installation allows us to share DoIt ea
 ---
 
 **Cultivate your focus, one task at a time.** 🌱
+
