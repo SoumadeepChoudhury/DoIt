@@ -1,4 +1,6 @@
 // home_page.dart
+import 'dart:io';
+
 import 'package:doit/components/CelebrationsPage.dart';
 import 'package:doit/components/TaskCompletionOverlay.dart';
 import 'package:doit/components/TaskEditorPage.dart';
@@ -11,7 +13,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:lottie/lottie.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:sqflite/sqflite.dart';
 
 /*
 showDialog(
@@ -51,17 +55,40 @@ class _HomePageState extends State<HomePage> {
     super.initState();
   }
 
-  void _checkForIncompleteTaskAndShift(appProvider) {
-    //Check for the incomplete task in the list and chnage the date to the next day
-    for (var task in appProvider.tasks) {
-      if (!task.isDone) {
-        // If the task is not done, shift it to the next day
-        String taskDate = DateFormat('yyyy-M-d').format(DateTime.now());
-        database.updateTask(task.id, task.title, task.description,
-            task.isDone ? 1 : 0, task.repeat, taskDate, task.time ?? 'None');
-      }
-    }
-  }
+  // void _checkForIncompleteTaskAndShift(task) {
+  //   if (!task.isDone) {
+  //     // If the task is not done, shift it to the next day
+  //     String taskDate = DateFormat('yyyy-M-d').format(DateTime.now());
+  //     if (taskDate != task.date) {
+  //       database.updateTask(task.id, task.title, task.description,
+  //           task.isDone ? 1 : 0, task.repeat, taskDate, task.time ?? 'None');
+  //     }
+  //   }
+  // }
+
+  // void _checkForEverydayTask(task) {
+  //   if (task.repeat == "Everyday" && task.isDone) {
+  //     String taskDate = DateFormat('yyyy-M-d').format(DateTime.now());
+  //     if (!widget.taskIds.contains(task.id) && task.date != taskDate) {
+  //       database.addTask(task.title, task.description, 0, task.repeat, taskDate,
+  //           task.time ?? 'None');
+  //       database.updateTask(task.id, task.title, task.description, 1, "Once",
+  //           task.date, task.time ?? 'None');
+  //       widget.taskIds.add(task.id);
+  //     }
+  //   }
+  // }
+
+  // void _checkForIncompleteTaskAndShift___AND___checkForEverydayTask(
+  //     appProvider) async {
+  //   //Check for the incomplete task in the list and chnage the date to the next day
+  //   for (var task in appProvider.tasks) {
+  //     print(task.title);
+  //     _checkForIncompleteTaskAndShift(task);
+  //     _checkForEverydayTask(task);
+  //   }
+  //   await appProvider.loadTasks();
+  // }
 
   void updatePercentage(appProvider) {
     _progressValue =
@@ -97,17 +124,28 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Consumer<AppProvider>(builder: (context, appProvider, child) {
-      _checkForIncompleteTaskAndShift(appProvider);
+      var todaysTask = [];
+      if (appProvider.tasks.isNotEmpty) {
+        for (var t in appProvider.tasks) {
+          final taskDate = DateFormat('yyyy-M-d').parse(t.date);
+          if (isSameDate(taskDate, DateTime.now())) todaysTask.add(t);
+        }
+      }
+      // _checkForIncompleteTaskAndShift___AND___checkForEverydayTask(appProvider);
       updatePercentage(appProvider);
-      //Check if not task if there for today show the modal
+      //Check if no task is there for today show the modal
       if (appProvider.tasks.isNotEmpty &&
-          _getTodayIncompleteTasksCount(appProvider.tasks) == 0) {
+          _getTodayIncompleteTasksCount(appProvider.tasks) == 0 &&
+          _getTodayTasksCount(appProvider.tasks) > 0) {
         // Add the date in the history table
+        // print("Running...");
         try {
           String date = DateFormat('yyyy-M-d').format(DateTime.now());
-          database.addToHistory(
-            date,
-          );
+          if (!appProvider.historyDatesOfAllTaskCompletion.contains(date)) {
+            database.addToHistory(
+              date,
+            );
+          }
           // appProvider.loadHistory();
         } catch (e) {}
         if (!appProvider.dailyGoalAchieved) {
@@ -367,49 +405,17 @@ class _HomePageState extends State<HomePage> {
                     ])
                   : SliverChildBuilderDelegate(
                       (context, index) {
-                        final task = appProvider.tasks.reversed.toList()[index];
-                        final taskDate =
-                            DateFormat('yyyy-M-d').parse(task.date);
                         if (screenTitle == "Today's Tasks") {
+                          final task = todaysTask.reversed.toList()[index];
+                          final taskDate =
+                              DateFormat('yyyy-M-d').parse(task.date);
                           //Filter out only today's task
-                          if (isSameDate(taskDate, DateTime.now())) {
-                            return _buildTaskTile(
-                              task: task,
-                              appProvider: appProvider,
-                              title: task.title,
-                              isDone: task.isDone,
-                              onChanged: (value) {
-                                // Set the tasks isDone to true
-                                database.updateTask(
-                                    task.id,
-                                    task.title,
-                                    task.description,
-                                    value! ? 1 : 0,
-                                    task.repeat,
-                                    task.date,
-                                    task.time != null ? task.time! : "None");
-                                setState(() {
-                                  task.isDone = value;
-                                });
-                                !value
-                                    ? database.removeFromHistory(
-                                        DateFormat('yyyy-M-d').format(taskDate))
-                                    : null;
-                                appProvider.loadHistory();
-                              },
-                              primaryColor: primaryColor,
-                              surfaceColor: surfaceColor,
-                              textPrimary: textPrimary,
-                            );
-                          }
-                        } else {
                           return _buildTaskTile(
                             task: task,
-                            state: "Inbox",
                             appProvider: appProvider,
                             title: task.title,
                             isDone: task.isDone,
-                            onChanged: (value) {
+                            onChanged: (value) async {
                               // Set the tasks isDone to true
                               database.updateTask(
                                   task.id,
@@ -426,16 +432,51 @@ class _HomePageState extends State<HomePage> {
                                   ? database.removeFromHistory(
                                       DateFormat('yyyy-M-d').format(taskDate))
                                   : null;
-                              appProvider.loadHistory();
+                              await appProvider.loadHistory();
+                            },
+                            primaryColor: primaryColor,
+                            surfaceColor: surfaceColor,
+                            textPrimary: textPrimary,
+                          );
+                        } else {
+                          final task =
+                              appProvider.tasks.reversed.toList()[index];
+                          final taskDate =
+                              DateFormat('yyyy-M-d').parse(task.date);
+                          return _buildTaskTile(
+                            task: task,
+                            state: "Inbox",
+                            appProvider: appProvider,
+                            title: task.title,
+                            isDone: task.isDone,
+                            onChanged: (value) async {
+                              // Set the tasks isDone to true
+                              database.updateTask(
+                                  task.id,
+                                  task.title,
+                                  task.description,
+                                  value! ? 1 : 0,
+                                  task.repeat,
+                                  task.date,
+                                  task.time != null ? task.time! : "None");
+                              setState(() {
+                                task.isDone = value;
+                              });
+                              !value
+                                  ? database.removeFromHistory(
+                                      DateFormat('yyyy-M-d').format(taskDate))
+                                  : null;
+                              await appProvider.loadHistory();
                             },
                             primaryColor: primaryColor,
                             surfaceColor: surfaceColor,
                             textPrimary: textPrimary,
                           );
                         }
-                        return null;
                       },
-                      childCount: appProvider.tasks.length,
+                      childCount: screenTitle == "Today's Tasks"
+                          ? todaysTask.length
+                          : appProvider.tasks.length,
                     ),
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 80)),

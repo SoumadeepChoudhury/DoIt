@@ -25,54 +25,11 @@ class _HistoryPageState extends State<HistoryPage> {
     },
 */
   AppDatabase database = AppDatabase.instance;
-  List<Map<String, dynamic>> _completedTasksByDay = [];
-
-  bool isSameDate(DateTime d1, DateTime d2) {
-    return d1.year == d2.year && d1.month == d2.month && d1.day == d2.day;
-  }
-
-  void _loadCompletedTasksHistory(appProvider) {
-    final now = DateTime.now();
-    final sevenDaysAgo = now.subtract(Duration(days: 7));
-
-    _completedTasksByDay.clear();
-
-    for (var task in appProvider.tasks) {
-      appProvider.loadHistory();
-      final taskDate = DateFormat('yyyy-M-d').parse(task.date);
-      if (taskDate.isBefore(sevenDaysAgo)) {
-        database.deleteTask(task.id);
-        continue; // Skip tasks older than 7 days
-      }
-      if (isSameDate(taskDate, now)) {
-        continue;
-      }
-
-      // Find or create the entry for the task's day
-      final dayKey = DateFormat('MMMM d, yyyy').format(taskDate);
-      final dayEntry = _completedTasksByDay.firstWhere(
-          (entry) => entry['day'] == dayKey,
-          orElse: () =>
-              {'day': dayKey, 'isAllTaskCompletedDay': false, 'tasks': []});
-      if (appProvider.historyDatesOfAllTaskCompletion
-          .contains(DateFormat('yyyy-M-d').format(taskDate))) {
-        dayEntry['isAllTaskCompletedDay'] = true;
-      }
-
-      task.isDone ? dayEntry['tasks'].add(task.title) : null;
-
-      if (!_completedTasksByDay.contains(dayEntry)) {
-        _completedTasksByDay.add(dayEntry);
-      }
-    }
-    _completedTasksByDay = _completedTasksByDay.reversed.toList();
-  }
 
   @override
   Widget build(BuildContext context) {
     return Consumer<AppProvider>(
       builder: (context, appProvider, child) {
-        _loadCompletedTasksHistory(appProvider);
         return Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -214,12 +171,13 @@ class _HistoryPageState extends State<HistoryPage> {
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                  child: _completedTasksByDay.isNotEmpty
+                  child: appProvider.completedTasksByDay.isNotEmpty
                       ? ListView.builder(
                           physics: const BouncingScrollPhysics(),
-                          itemCount: _completedTasksByDay.length,
+                          itemCount: appProvider.completedTasksByDay.length,
                           itemBuilder: (context, index) {
-                            final dayData = _completedTasksByDay[index];
+                            final dayData =
+                                appProvider.completedTasksByDay[index];
                             final String day = dayData['day'];
                             final bool isAllTaskCompletedDay =
                                 dayData['isAllTaskCompletedDay'];

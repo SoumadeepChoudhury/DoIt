@@ -69,7 +69,7 @@ class AppDatabase {
   }
 
   // Update Task
-  void updateTask(int id, String title, String description, int isDone,
+  Future<void> updateTask(int id, String title, String description, int isDone,
       String repeat, String date, String time) async {
     final db = await database;
     await db.update(

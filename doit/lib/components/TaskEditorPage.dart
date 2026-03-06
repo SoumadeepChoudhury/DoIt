@@ -104,7 +104,7 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
   void _saveTask(appProvider) async {
     if (_titleController.text.isNotEmpty) {
       if (widget.task != null) {
-        //Cancel the previous notificatio if set
+        //Cancel the previous notification if set
         Notifications().cancelNotification(widget.task!.id);
         //Set Notifications
         _selectedTime != null && appProvider.isNotificationsEnabled
@@ -130,7 +130,7 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                 ? '${_selectedTime!.hour}:${_selectedTime!.minute}'
                 : "None");
 
-        appProvider.loadTasks();
+        await appProvider.loadTasks();
       } else {
         //Add new task in database
         final id = await database.addTask(
@@ -152,7 +152,7 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                 hour: _selectedTime!.hour,
                 minute: _selectedTime!.minute)
             : null;
-        appProvider.loadTasks();
+        await appProvider.loadTasks();
         try {
           database
               .removeFromHistory(DateFormat('yyyy-M-d').format(DateTime.now()));

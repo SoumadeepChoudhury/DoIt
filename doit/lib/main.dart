@@ -55,7 +55,7 @@ class _MyAppState extends State<MyApp> {
                 builder: (context) {
                   switch (_currentBottomNavIndex) {
                     case 0:
-                      return const HomePage();
+                      return HomePage();
                     case 1:
                       return const HistoryPage();
                     case 2:
@@ -63,7 +63,7 @@ class _MyAppState extends State<MyApp> {
                     case 3:
                       return const SettingsPage();
                     default:
-                      return const HomePage();
+                      return HomePage();
                   }
                 },
               ),

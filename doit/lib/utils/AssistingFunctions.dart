@@ -99,7 +99,7 @@ int getCurrentLevel(List<Task> tasks) {
 }
 
 int getPercentage(int level, List<Task> tasks) {
-  int completedTasks = tasks.where((task) => task.isDone).length;
+  int completedTasks = getCompletedTaskCount(tasks);
   int maxTasksUpperLevel = getMaxNoOfCompletedTask(level);
   int maxTaskLowerLevel = getMaxNoOfCompletedTask(level - 1);
   return ((completedTasks - maxTaskLowerLevel) /
