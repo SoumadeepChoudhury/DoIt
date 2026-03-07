@@ -7,7 +7,9 @@ import 'package:doit/utils/AssistingFunctions.dart';
 import 'package:doit/utils/CustomBottomNavBar.dart';
 import 'package:doit/utils/Notifications.dart';
 import 'package:doit/utils/Provider.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:provider/provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -17,10 +19,19 @@ Future<void> requestPermissions() async {
   }
 }
 
-void main() {
+Future<void> main() async {
+  // 1. Added Future and async
   WidgetsFlutterBinding.ensureInitialized();
-  Notifications().initNotificationSettings();
-  requestPermissions();
+
+  // 2. Initialize the downloader (THIS IS THE MISSING PIECE)
+  await FlutterDownloader.initialize(
+      debug: kDebugMode, // Change to false for the final public release
+      ignoreSsl: true // Crucial for downloading from GitHub URLs
+      );
+
+  // 3. Await your other settings to ensure they are ready
+  await Notifications().initNotificationSettings();
+  await requestPermissions();
 
   runApp(const MyApp());
 }

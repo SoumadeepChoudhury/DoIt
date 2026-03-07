@@ -109,14 +109,21 @@ int getPercentage(int level, List<Task> tasks) {
 }
 
 void checkUpdate(BuildContext context) async {
-  final response = await http.get(Uri.parse(
-      "https://api.github.com/repos/SoumadeepChoudhury/DoIt/releases"));
+  if (!context.mounted) return;
+  final response = await http.get(
+      Uri.parse(
+          "https://api.github.com/repos/SoumadeepChoudhury/DoIt/releases"),
+      headers: {"User-Agent": "Flutter-DoIt-App"});
   String url = "";
   String latest_version_code = "";
   if (response.statusCode == 200) {
-    var data = List<Map<String, dynamic>>.from(jsonDecode(response.body));
+    print("Entered");
+    // var data = List<Map<String, dynamic>>.from(jsonDecode(response.body));
+    var data = jsonDecode(response.body) as List<dynamic>;
     if (data.isNotEmpty) {
-      latest_version_code = (data[0]["tag_name"]).substring(1);
+      var latestRelease = data[0] as Map<String, dynamic>;
+      latest_version_code = latestRelease["tag_name"].toString().substring(1);
+      print("LVC: " + latest_version_code);
       //Deleteing existing file
       String path = (await getExternalStorageDirectory())?.path ??
           "/storage/emulated/0/Download";
@@ -131,6 +138,7 @@ void checkUpdate(BuildContext context) async {
 
       final info = await PackageInfo.fromPlatform();
       String current_version_code = info.version;
+      print("CVC: " + current_version_code);
 
       //Compare the two version code and if the latest is greater then print it.
       if (latest_version_code.compareTo(current_version_code) > 0) {
