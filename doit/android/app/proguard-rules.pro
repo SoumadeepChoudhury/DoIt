@@ -1,0 +1,2 @@
+-keep class vn.hunghd.flutterdownloader.** { *; }
+-keep public class * extends android.app.Service

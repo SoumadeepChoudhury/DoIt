@@ -144,6 +144,7 @@ void checkUpdate(BuildContext context) async {
       if (latest_version_code.compareTo(current_version_code) > 0) {
         url =
             "https://github.com/SoumadeepChoudhury/DoIt/releases/download/v$latest_version_code/app-release.apk";
+        if (!context.mounted) return;
         showDialog(
           context: context,
           barrierColor: Colors.black.withValues(alpha: 0.7),
@@ -155,7 +156,7 @@ void checkUpdate(BuildContext context) async {
                   color: primaryColor.withValues(alpha: 0.3), width: 1),
             ),
             child: Container(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(20),
                 gradient: LinearGradient(
@@ -250,7 +251,7 @@ void checkUpdate(BuildContext context) async {
                           Navigator.pop(context); // Close the dialog
                           String? taskId = await downloadAndInstallAPK(
                               url, latest_version_code, context);
-
+                          if (!context.mounted) return;
                           // Show download started dialog
                           showDialog(
                             context: context,
@@ -262,7 +263,7 @@ void checkUpdate(BuildContext context) async {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: primaryColor,
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 24, vertical: 12),
+                              horizontal: 10, vertical: 12),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
