@@ -28,10 +28,17 @@ class _CelebrationPageState extends State<CelebrationPage> {
   late Timer _timer;
   double _scale = 0.0;
   double _opacity = 0.0;
+  int? _currentLevel;
 
   @override
   void initState() {
     super.initState();
+    // Fetch current level asynchronously
+    getCurrentLevel(AppProvider()).then((level) {
+      setState(() {
+        _currentLevel = level;
+      });
+    });
     // Start animation
     Future.delayed(const Duration(milliseconds: 200), () {
       setState(() {
@@ -137,7 +144,7 @@ class _CelebrationPageState extends State<CelebrationPage> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Level ${getCurrentLevel(appProvider.tasks) + 1} Unlocked',
+                          'Level ${_currentLevel != null ? _currentLevel! + 1 : 'Loading...'} Unlocked',
                           style: GoogleFonts.nunitoSans(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,

@@ -15,10 +15,12 @@ class LevelsPage extends StatefulWidget {
 
 class _LevelsPageState extends State<LevelsPage> {
   final List<Level> _levels = [];
+  int _currentLevel = 1;
 
-  void _loadLevels(appProvider) {
+  Future<void> _loadLevels(appProvider) async {
     _levels.clear();
-    int level = getCurrentLevel(appProvider.tasks);
+    _currentLevel = await getCurrentLevel(appProvider);
+    int level = _currentLevel;
     int i = 1;
     while (i <= level + 3) {
       if (i < level) {
@@ -46,13 +48,21 @@ class _LevelsPageState extends State<LevelsPage> {
 
       i++;
     }
+
+    if (mounted) setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
     return Consumer<AppProvider>(
       builder: (context, appProvider, child) {
-        _loadLevels(appProvider);
+        if (_levels.isEmpty) {
+          _loadLevels(appProvider);
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
         return Scaffold(
           body: Container(
             decoration: BoxDecoration(
@@ -155,7 +165,7 @@ class _LevelsPageState extends State<LevelsPage> {
                                           ),
                                           const SizedBox(height: 16),
                                           Text(
-                                            "Your level increases as you complete tasks. Each level unlocks new achievements and rewards. Complete ${getMaxNoOfCompletedTask(getCurrentLevel(appProvider.tasks)) - getCompletedTaskCount(appProvider.tasks)} tasks to reach Level ${getCurrentLevel(appProvider.tasks) + 1}.",
+                                            "Your level increases as you complete tasks. Each level unlocks new achievements and rewards. Complete ${getMaxNoOfCompletedTask(_currentLevel) - getCompletedTaskCount(appProvider.tasks)} tasks to reach Level ${_currentLevel + 1}.",
                                             style: GoogleFonts.nunitoSans(
                                               fontSize: 14,
                                               fontWeight: FontWeight.w600,

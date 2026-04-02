@@ -151,13 +151,14 @@ class AppProvider extends ChangeNotifier {
 
   void _loadCompletedTasksHistory() {
     final now = DateTime.now();
-    final sevenDaysAgo = now.subtract(Duration(days: 7));
+    final daysAgo =
+        now.subtract(Duration(days: 30)); // Changing to 30 days from 7 days
 
     completedTasksByDay.clear();
 
     for (var task in tasks) {
       final taskDate = DateFormat('yyyy-M-d').parse(task.date);
-      if (taskDate.isBefore(sevenDaysAgo)) {
+      if (taskDate.isBefore(daysAgo) && task.isDone) {
         database.deleteTask(task.id);
         continue; // Skip tasks older than 7 days
       }
@@ -183,5 +184,11 @@ class AppProvider extends ChangeNotifier {
       }
     }
     completedTasksByDay = completedTasksByDay.reversed.toList();
+  }
+
+  // get the completed task count from the completed table
+  Future<int> getCompletedTasksCount() async {
+    final completedTaskCount = await database.getCompletedTasksCount();
+    return completedTaskCount;
   }
 }

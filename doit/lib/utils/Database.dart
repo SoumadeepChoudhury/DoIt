@@ -29,7 +29,7 @@ class AppDatabase {
 
     final database = await openDatabase(
       databasePath,
-      version: 1,
+      version: 2,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE tasks (
@@ -48,6 +48,21 @@ class AppDatabase {
             day TEXT PRIMARY KEY
           )
         ''');
+
+        await db.execute('''
+          CREATE TABLE completed (
+            id INTEGER PRIMARY KEY,
+            count INTEGER DEFAULT 0
+          )
+        ''');
+        await db.insert('completed', {'id': 1, 'count': 0});
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute('CREATE TABLE completed (count INTEGER DEFAULT 0)');
+          await db.insert('completed', {'id': 1, 'count': 0});
+          print("Database upgraded to version 2: added 'completed' table.");
+        }
       },
     );
     return database;
@@ -105,6 +120,13 @@ class AppDatabase {
     return Sqflite.firstIntValue(result) ?? 0;
   }
 
+  Future<int> getCompletedTasksCount() async {
+    final db = await database;
+    final result = await db.rawQuery('SELECT count FROM completed where id=1');
+    print("Result: $result");
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+
   // Get All History
   Future<List<String>> getAllHistory() async {
     final db = await database;
@@ -129,5 +151,51 @@ class AppDatabase {
       // Handle any errors that may occur during deletion
       print("Error removing from history: $e");
     }
+  }
+
+  Future<void> incrementCompletedCount() async {
+    final db = await database;
+
+    await db.transaction((txn) async {
+      final List<Map<String, dynamic>> result = await txn.query('completed');
+
+      if (result.isNotEmpty) {
+        int currentCount = result.first['count'] as int;
+        print("Current completed count: $currentCount");
+
+        await txn.update(
+          'completed',
+          {'count': currentCount + 1},
+          where: 'id = ?',
+          whereArgs: [1],
+        );
+      } else {
+        // Fallback: If table is somehow empty, insert the first record
+        await txn.insert('completed', {'count': 1});
+      }
+    });
+  }
+
+  Future<void> decrementCompletedCount() async {
+    final db = await database;
+
+    await db.transaction((txn) async {
+      final List<Map<String, dynamic>> result = await txn.query('completed');
+
+      if (result.isNotEmpty) {
+        int currentCount = result.first['count'] as int;
+        print("Current completed count before decrement: $currentCount");
+
+        // Ensure count doesn't go below 0
+        if (currentCount > 0) {
+          await txn.update(
+            'completed',
+            {'count': currentCount - 1},
+            where: 'id = ?',
+            whereArgs: [1],
+          );
+        }
+      }
+    });
   }
 }

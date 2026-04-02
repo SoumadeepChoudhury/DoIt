@@ -127,7 +127,7 @@ class _HistoryPageState extends State<HistoryPage> {
                                           ),
                                           const SizedBox(height: 16),
                                           Text(
-                                            "We preserve your completed tasks for 7 days so you can revisit achievements. After this period, items are automatically removed to maintain a clean, focused workspace that reflects your current priorities.",
+                                            "We preserve your completed tasks for 30 days so you can revisit achievements. After this period, items are automatically removed to maintain a clean, focused workspace that reflects your current priorities.",
                                             style: GoogleFonts.nunitoSans(
                                               fontSize: 14,
                                               fontWeight: FontWeight.w600,

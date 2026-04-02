@@ -40,11 +40,15 @@ class _HomePageState extends State<HomePage> {
   final AppDatabase database = AppDatabase.instance;
 
   int _progressValue = 0;
+  int _currentLevel = 0;
 
   String screenTitle = "Today's Tasks";
 
+  late Future<String> levelMessageFuture;
+
   @override
   void initState() {
+    levelMessageFuture = getLevelMessage();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       try {
         checkUpdate(context);
@@ -52,6 +56,7 @@ class _HomePageState extends State<HomePage> {
         print("Error while checking update...");
       }
     });
+    updatePercentage(AppProvider());
     super.initState();
   }
 
@@ -90,9 +95,15 @@ class _HomePageState extends State<HomePage> {
   //   await appProvider.loadTasks();
   // }
 
-  void updatePercentage(appProvider) {
-    _progressValue =
-        getPercentage(getCurrentLevel(appProvider.tasks), appProvider.tasks);
+  Future<void> updatePercentage(AppProvider appProvider) async {
+    final int level = await getCurrentLevel(appProvider);
+    final int value = await getPercentage(appProvider, level);
+    if (!mounted) return;
+    setState(() {
+      _currentLevel = level;
+      _progressValue = value;
+    });
+    print("Level: $level, Percentage: $value");
   }
 
   //filter todays task from appProvider.tasks and return the count
@@ -126,18 +137,18 @@ class _HomePageState extends State<HomePage> {
     return Consumer<AppProvider>(builder: (context, appProvider, child) {
       var todaysTask = [];
       if (appProvider.tasks.isNotEmpty) {
+        // Assigning today's task
         for (var t in appProvider.tasks) {
           final taskDate = DateFormat('yyyy-M-d').parse(t.date);
           if (isSameDate(taskDate, DateTime.now())) todaysTask.add(t);
         }
       }
-      // _checkForIncompleteTaskAndShift___AND___checkForEverydayTask(appProvider);
-      updatePercentage(appProvider);
-      //Check if no task is there for today show the modal
+
+      //Check if no task is there for today show the modal i.e., All Task Done
       if (appProvider.tasks.isNotEmpty &&
           _getTodayIncompleteTasksCount(appProvider.tasks) == 0 &&
           _getTodayTasksCount(appProvider.tasks) > 0) {
-        // Add the date in the history table
+        // Add the date in the history table for daily goal achievement
         // print("Running...");
         try {
           String date = DateFormat('yyyy-M-d').format(DateTime.now());
@@ -163,8 +174,8 @@ class _HomePageState extends State<HomePage> {
       // Check the level and navigate to the CelebrationPage
 
       if (appProvider.tasks.isNotEmpty &&
-          getCompletedTaskCount(appProvider.tasks) ==
-              getMaxNoOfCompletedTask(getCurrentLevel(appProvider.tasks)) &&
+          AppProvider().getCompletedTasksCount() ==
+              getMaxNoOfCompletedTask(_currentLevel) &&
           !appProvider.celebrationShown) {
         appProvider.celebrationShown = !appProvider.celebrationShown;
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -296,13 +307,39 @@ class _HomePageState extends State<HomePage> {
                                 color: Colors.black, size: 18),
                           ),
                           const SizedBox(width: 12),
-                          Text(
-                            getLevelMessage(appProvider.tasks),
-                            style: GoogleFonts.nunitoSans(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: primaryColor,
-                            ),
+                          FutureBuilder<String>(
+                            future: levelMessageFuture,
+                            builder: (context, snapshot) {
+                              if (snapshot.connectionState ==
+                                  ConnectionState.waiting) {
+                                return Text(
+                                  'Loading...',
+                                  style: GoogleFonts.nunitoSans(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: primaryColor,
+                                  ),
+                                );
+                              } else if (snapshot.hasError) {
+                                return Text(
+                                  'Error',
+                                  style: GoogleFonts.nunitoSans(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: primaryColor,
+                                  ),
+                                );
+                              } else {
+                                return Text(
+                                  snapshot.data!,
+                                  style: GoogleFonts.nunitoSans(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: primaryColor,
+                                  ),
+                                );
+                              }
+                            },
                           ),
                         ],
                       ),
@@ -433,6 +470,10 @@ class _HomePageState extends State<HomePage> {
                                       DateFormat('yyyy-M-d').format(taskDate))
                                   : null;
                               await appProvider.loadHistory();
+                              value
+                                  ? await database.incrementCompletedCount()
+                                  : await database.decrementCompletedCount();
+                              updatePercentage(appProvider);
                             },
                             primaryColor: primaryColor,
                             surfaceColor: surfaceColor,
@@ -467,6 +508,10 @@ class _HomePageState extends State<HomePage> {
                                       DateFormat('yyyy-M-d').format(taskDate))
                                   : null;
                               await appProvider.loadHistory();
+                              value
+                                  ? await database.incrementCompletedCount()
+                                  : await database.decrementCompletedCount();
+                              updatePercentage(appProvider);
                             },
                             primaryColor: primaryColor,
                             surfaceColor: surfaceColor,

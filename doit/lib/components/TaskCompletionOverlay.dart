@@ -18,6 +18,7 @@ class _TaskCompletionOverlayState extends State<TaskCompletionOverlay>
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
   late Animation<double> _opacityAnimation;
+  late Future<int> currentLevel;
 
   @override
   void initState() {
@@ -37,6 +38,7 @@ class _TaskCompletionOverlayState extends State<TaskCompletionOverlay>
     );
 
     _controller.forward();
+    currentLevel = getCurrentLevel(AppProvider());
   }
 
   @override
@@ -152,32 +154,55 @@ class _TaskCompletionOverlayState extends State<TaskCompletionOverlay>
                                   const SizedBox(height: 24),
 
                                   // Reward section
-                                  Container(
-                                    padding: const EdgeInsets.all(16),
-                                    decoration: BoxDecoration(
-                                      color: accentColor.withValues(alpha: 0.2),
-                                      borderRadius: BorderRadius.circular(16),
-                                    ),
-                                    child: Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Icon(
-                                          Icons.auto_awesome,
-                                          color: primaryColor,
-                                          size: 20,
+                                  FutureBuilder<int>(
+                                    future: currentLevel,
+                                    builder: (context, snapshot) {
+                                      if (snapshot.connectionState ==
+                                          ConnectionState.waiting) {
+                                        return Container(
+                                          padding: const EdgeInsets.all(16),
+                                          child:
+                                              const CircularProgressIndicator(),
+                                        );
+                                      }
+
+                                      if (snapshot.hasError) {
+                                        return const Text(
+                                            "Error loading level");
+                                      }
+
+                                      final currentLevel = snapshot.data!;
+
+                                      return Container(
+                                        padding: const EdgeInsets.all(16),
+                                        decoration: BoxDecoration(
+                                          color: accentColor.withValues(
+                                              alpha: 0.2),
+                                          borderRadius:
+                                              BorderRadius.circular(16),
                                         ),
-                                        const SizedBox(width: 12),
-                                        Text(
-                                          '+${getMaxNoOfCompletedTask(getCurrentLevel(appProvider.tasks)) - appProvider.tasks.where((task) => task.isDone).length} Tasks To Level ${getCurrentLevel(appProvider.tasks) + 1}',
-                                          style: GoogleFonts.nunitoSans(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w800,
-                                            color: primaryColor,
-                                          ),
+                                        child: Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            Icon(
+                                              Icons.auto_awesome,
+                                              color: primaryColor,
+                                              size: 20,
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Text(
+                                              '+${getMaxNoOfCompletedTask(currentLevel) - appProvider.tasks.where((task) => task.isDone).length} Tasks To Level ${currentLevel + 1}',
+                                              style: GoogleFonts.nunitoSans(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w800,
+                                                color: primaryColor,
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                      ],
-                                    ),
+                                      );
+                                    },
                                   ),
                                   const SizedBox(height: 32),
 

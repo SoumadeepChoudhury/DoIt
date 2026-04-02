@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:doit/components/DownloadProgress.dart';
 import 'package:doit/models/TaskModel.dart';
 import 'package:doit/utils/Colors.dart';
+import 'package:doit/utils/Provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -50,9 +51,9 @@ String generateRewardName(int level) {
   }
 }
 
-String getLevelMessage(List<Task> tasks) {
-  int level = getCurrentLevel(tasks);
-  int percent = getPercentage(level, tasks);
+Future<String> getLevelMessage() async {
+  final level = await getCurrentLevel(AppProvider());
+  final percent = await getPercentage(AppProvider(), level);
 
   String status;
 
@@ -85,8 +86,11 @@ int getCompletedTaskCount(List<Task> tasks) {
   return tasks.where((task) => task.isDone).length;
 }
 
-int getCurrentLevel(List<Task> tasks) {
-  int completedTasks = getCompletedTaskCount(tasks);
+Future<int> getCurrentLevel(AppProvider appProvider) async {
+  // int completedTasks =
+  // getCompletedTaskCount(tasks); // get count from the new table
+  // fetch the count from the database
+  int completedTasks = await appProvider.getCompletedTasksCount();
   int level = 0;
   int i = 1;
   while (level == 0) {
@@ -98,8 +102,9 @@ int getCurrentLevel(List<Task> tasks) {
   return level;
 }
 
-int getPercentage(int level, List<Task> tasks) {
-  int completedTasks = getCompletedTaskCount(tasks);
+Future<int> getPercentage(AppProvider appProvider, int level) async {
+  int completedTasks = await appProvider.getCompletedTasksCount();
+
   int maxTasksUpperLevel = getMaxNoOfCompletedTask(level);
   int maxTaskLowerLevel = getMaxNoOfCompletedTask(level - 1);
   return ((completedTasks - maxTaskLowerLevel) /
@@ -110,6 +115,20 @@ int getPercentage(int level, List<Task> tasks) {
 
 void checkUpdate(BuildContext context) async {
   if (!context.mounted) return;
+
+  // Checking for active downloads
+  final tasks = await FlutterDownloader.loadTasks();
+
+  bool isDownloading = tasks?.any((task) =>
+          task.status == DownloadTaskStatus.running ||
+          task.status == DownloadTaskStatus.enqueued) ??
+      false;
+
+  if (isDownloading) {
+    print("Update check skipped: Download already in progress.");
+    return; // Exit early
+  }
+
   final response = await http.get(
       Uri.parse(
           "https://api.github.com/repos/SoumadeepChoudhury/DoIt/releases"),
@@ -117,7 +136,6 @@ void checkUpdate(BuildContext context) async {
   String url = "";
   String latest_version_code = "";
   if (response.statusCode == 200) {
-    print("Entered");
     // var data = List<Map<String, dynamic>>.from(jsonDecode(response.body));
     var data = jsonDecode(response.body) as List<dynamic>;
     if (data.isNotEmpty) {
