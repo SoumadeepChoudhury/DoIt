@@ -59,7 +59,8 @@ class AppDatabase {
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
-          await db.execute('CREATE TABLE completed (count INTEGER DEFAULT 0)');
+          await db.execute(
+              'CREATE TABLE completed (id INTEGER PRIMARY KEY,count INTEGER DEFAULT 0)');
           await db.insert('completed', {'id': 1, 'count': 0});
           print("Database upgraded to version 2: added 'completed' table.");
         }

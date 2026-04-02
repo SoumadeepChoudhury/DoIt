@@ -322,7 +322,7 @@ class _HomePageState extends State<HomePage> {
                                 );
                               } else if (snapshot.hasError) {
                                 return Text(
-                                  'Error',
+                                  'Error: ${snapshot.error}',
                                   style: GoogleFonts.nunitoSans(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w700,

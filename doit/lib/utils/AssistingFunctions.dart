@@ -52,8 +52,9 @@ String generateRewardName(int level) {
 }
 
 Future<String> getLevelMessage() async {
-  final level = await getCurrentLevel(AppProvider());
-  final percent = await getPercentage(AppProvider(), level);
+  AppProvider appProvider = AppProvider();
+  final level = await getCurrentLevel(appProvider);
+  final percent = await getPercentage(appProvider, level);
 
   String status;
 
