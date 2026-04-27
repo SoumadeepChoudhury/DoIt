@@ -1,14 +1,17 @@
 import 'dart:async';
+import 'dart:developer';
 
 import 'package:doit/models/TaskModel.dart';
 import 'package:doit/utils/Database.dart';
 import 'package:doit/utils/FileManager.dart';
+import 'package:doit/utils/Notifications.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 class AppProvider extends ChangeNotifier {
   final AppDatabase database = AppDatabase.instance;
   final FileManager fileManager = FileManager.instance;
+  bool _hasInitialized = false;
 
   List<Task> tasks = [];
   List<String> historyDatesOfAllTaskCompletion = [];
@@ -17,23 +20,22 @@ class AppProvider extends ChangeNotifier {
 
   bool isNotificationsEnabled = true;
 
-  List<int> taskIds = [];
-
   List<Map<String, dynamic>> completedTasksByDay = [];
 
   final Completer<void> _initCompleter = Completer<void>();
   Future<void> get isReady => _initCompleter.future;
 
-  AppProvider() {
-    _initInternal();
+  AppProvider(isProcessing) {
+    if (isProcessing != null) _initInternal(isProcessing);
   }
 
-  Future<void> _initInternal() async {
+  Future<void> _initInternal(isProcessing) async {
+    if (_hasInitialized) return;
+    _hasInitialized = true;
     await loadTasks();
     await loadHistory();
     await loadSettings();
-    _checkForIncompleteTaskAndShift___AND___checkForEverydayTask();
-    // _historyUpdate();
+    checkForIncompleteTaskAndShift___AND___checkForEverydayTask(isProcessing);
     _loadCompletedTasksHistory();
     _initCompleter.complete();
   }
@@ -75,7 +77,7 @@ class AppProvider extends ChangeNotifier {
     } catch (e) {}
   }
 
-  void _checkForIncompleteTaskAndShift(task) async {
+  Future<void> _checkForIncompleteTaskAndShift(task) async {
     if (!task.isDone) {
       // If the task is not done, shift it to the next day
       String taskDate = DateFormat('yyyy-M-d').format(DateTime.now());
@@ -86,24 +88,49 @@ class AppProvider extends ChangeNotifier {
     }
   }
 
-  void _checkForEverydayTask(task) async {
+  Future<void> _checkForEverydayTask(task) async {
     if (task.repeat == "Everyday" && task.isDone) {
       String taskDate = DateFormat('yyyy-M-d').format(DateTime.now());
-      if (!taskIds.contains(task.id) && task.date != taskDate) {
-        await database.addTask(task.title, task.description, 0, task.repeat,
-            taskDate, task.time ?? 'None');
-        await database.updateTask(task.id, task.title, task.description, 1,
-            "Once", task.date, task.time ?? 'None');
-        taskIds.add(task.id);
+      if (task.date != taskDate) {
+        // THE CRITICAL CHECK: Ask the database if this title/date combo exists
+        final db = await database.database;
+        final existing = await db.query(
+          'tasks',
+          where: 'title = ? AND date = ?',
+          whereArgs: [task.title, taskDate],
+        );
+
+        if (existing.isEmpty) {
+          await database.addTask(task.title, task.description, 0, task.repeat,
+              taskDate, task.time ?? 'None');
+          await database.updateTask(task.id, task.title, task.description, 1,
+              "Once", task.date, task.time ?? 'None');
+          try {
+            if (task.time != null && isNotificationsEnabled) {
+              Notifications().scheduleNotifications(
+                  id: task.id,
+                  title: task.text,
+                  body: task.text,
+                  scheduledDate: DateFormat('yyyy-M-d').parse(taskDate),
+                  hour: task.time!.hour,
+                  minute: task.time!.minute);
+            }
+          } catch (e) {
+            log("Error setting the notification");
+          }
+        }
       }
     }
   }
 
-  void _checkForIncompleteTaskAndShift___AND___checkForEverydayTask() async {
+  checkForIncompleteTaskAndShift___AND___checkForEverydayTask(
+      isProcessing) async {
     //Check for the incomplete task in the list and chnage the date to the next day
+    if (isProcessing || isProcessing == null) return;
+    isProcessing = true;
     for (var task in tasks) {
-      _checkForIncompleteTaskAndShift(task);
-      _checkForEverydayTask(task);
+      await _checkForIncompleteTaskAndShift(task);
+      await _checkForEverydayTask(task);
     }
     await loadTasks();
   }

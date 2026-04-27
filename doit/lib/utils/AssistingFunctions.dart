@@ -52,7 +52,7 @@ String generateRewardName(int level) {
 }
 
 Future<String> getLevelMessage() async {
-  AppProvider appProvider = AppProvider();
+  AppProvider appProvider = AppProvider(null);
   final level = await getCurrentLevel(appProvider);
   final percent = await getPercentage(appProvider, level);
 
@@ -129,181 +129,188 @@ void checkUpdate(BuildContext context) async {
     print("Update check skipped: Download already in progress.");
     return; // Exit early
   }
+  try {
+    final response = await http.get(
+        Uri.parse(
+            "https://api.github.com/repos/SoumadeepChoudhury/DoIt/releases"),
+        headers: {"User-Agent": "Flutter-DoIt-App"});
 
-  final response = await http.get(
-      Uri.parse(
-          "https://api.github.com/repos/SoumadeepChoudhury/DoIt/releases"),
-      headers: {"User-Agent": "Flutter-DoIt-App"});
-  String url = "";
-  String latest_version_code = "";
-  if (response.statusCode == 200) {
-    // var data = List<Map<String, dynamic>>.from(jsonDecode(response.body));
-    var data = jsonDecode(response.body) as List<dynamic>;
-    if (data.isNotEmpty) {
-      var latestRelease = data[0] as Map<String, dynamic>;
-      latest_version_code = latestRelease["tag_name"].toString().substring(1);
-      print("LVC: " + latest_version_code);
-      //Deleteing existing file
-      String path = (await getExternalStorageDirectory())?.path ??
-          "/storage/emulated/0/Download";
-      File file = File("$path/app-release-v$latest_version_code.apk");
-      if (await file.exists()) {
-        try {
-          await file.delete();
-        } on FileSystemException catch (_) {
-          print("Can't delete the file");
+    String url = "";
+    String latest_version_code = "";
+    if (response.statusCode == 200) {
+      // var data = List<Map<String, dynamic>>.from(jsonDecode(response.body));
+      var data = jsonDecode(response.body) as List<dynamic>;
+      if (data.isNotEmpty) {
+        var latestRelease = data[0] as Map<String, dynamic>;
+        latest_version_code = latestRelease["tag_name"].toString().substring(1);
+        print("LVC: " + latest_version_code);
+        //Deleteing existing file
+        String path = (await getExternalStorageDirectory())?.path ??
+            "/storage/emulated/0/Download";
+        File file = File("$path/app-release-v$latest_version_code.apk");
+        if (await file.exists()) {
+          try {
+            await file.delete();
+          } on FileSystemException catch (_) {
+            print("Can't delete the file");
+          }
         }
-      }
 
-      final info = await PackageInfo.fromPlatform();
-      String current_version_code = info.version;
-      print("CVC: " + current_version_code);
+        final info = await PackageInfo.fromPlatform();
+        String current_version_code = info.version;
+        print("CVC: " + current_version_code);
 
-      //Compare the two version code and if the latest is greater then print it.
-      if (latest_version_code.compareTo(current_version_code) > 0) {
-        url =
-            "https://github.com/SoumadeepChoudhury/DoIt/releases/download/v$latest_version_code/app-release.apk";
-        if (!context.mounted) return;
-        showDialog(
-          context: context,
-          barrierColor: Colors.black.withValues(alpha: 0.7),
-          builder: (context) => Dialog(
-            backgroundColor: surfaceColor.withValues(alpha: 0.95),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-              side: BorderSide(
-                  color: primaryColor.withValues(alpha: 0.3), width: 1),
-            ),
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
+        //Compare the two version code and if the latest is greater then print it.
+        if (latest_version_code.compareTo(current_version_code) > 0) {
+          url =
+              "https://github.com/SoumadeepChoudhury/DoIt/releases/download/v$latest_version_code/app-release.apk";
+          if (!context.mounted) return;
+          showDialog(
+            context: context,
+            barrierColor: Colors.black.withValues(alpha: 0.7),
+            builder: (context) => Dialog(
+              backgroundColor: surfaceColor.withValues(alpha: 0.95),
+              shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    const Color(0xFF1A3A2F).withValues(alpha: 0.9),
-                    const Color(0xFF0F1A2F).withValues(alpha: 0.9),
-                  ],
-                ),
+                side: BorderSide(
+                    color: primaryColor.withValues(alpha: 0.3), width: 1),
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header
-                  Row(
-                    children: [
-                      Icon(Icons.system_update, color: primaryColor, size: 28),
-                      const SizedBox(width: 12),
-                      Text(
-                        "Update Available",
-                        style: GoogleFonts.nunitoSans(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                          color: primaryColor,
-                        ),
-                      ),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      const Color(0xFF1A3A2F).withValues(alpha: 0.9),
+                      const Color(0xFF0F1A2F).withValues(alpha: 0.9),
                     ],
                   ),
-                  const SizedBox(height: 20),
-
-                  // Message
-                  Text(
-                    "A new version of the app is available with improvements and bug fixes.",
-                    style: GoogleFonts.nunitoSans(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: textPrimary,
-                      height: 1.5,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Version info
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: surfaceColor.withValues(alpha: 0.5),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                          color: primaryColor.withValues(alpha: 0.2)),
-                    ),
-                    child: Row(
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header
+                    Row(
                       children: [
-                        Icon(Icons.info_outline, color: primaryColor, size: 20),
+                        Icon(Icons.system_update,
+                            color: primaryColor, size: 28),
                         const SizedBox(width: 12),
                         Text(
-                          "Version $latest_version_code",
+                          "Update Available",
                           style: GoogleFonts.nunitoSans(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: textPrimary,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            color: primaryColor,
                           ),
                         ),
                       ],
                     ),
-                  ),
-                  const SizedBox(height: 28),
+                    const SizedBox(height: 20),
 
-                  // Buttons
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        style: TextButton.styleFrom(
-                          foregroundColor: Colors.grey,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 20, vertical: 12),
-                        ),
-                        child: Text(
-                          "LATER",
-                          style: GoogleFonts.nunitoSans(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
+                    // Message
+                    Text(
+                      "A new version of the app is available with improvements and bug fixes.",
+                      style: GoogleFonts.nunitoSans(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: textPrimary,
+                        height: 1.5,
                       ),
-                      const SizedBox(width: 12),
-                      ElevatedButton(
-                        onPressed: () async {
-                          Navigator.pop(context); // Close the dialog
-                          String? taskId = await downloadAndInstallAPK(
-                              url, latest_version_code, context);
-                          if (!context.mounted) return;
-                          // Show download started dialog
-                          showDialog(
-                            context: context,
-                            barrierColor: Colors.black.withValues(alpha: 0.7),
-                            builder: (context) =>
-                                DownloadProgressDialog(taskId: taskId),
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: primaryColor,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: Text(
-                          "DOWNLOAD NOW",
-                          style: GoogleFonts.nunitoSans(
-                            fontWeight: FontWeight.w800,
-                            color: Colors.black,
-                          ),
-                        ),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Version info
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: surfaceColor.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                            color: primaryColor.withValues(alpha: 0.2)),
                       ),
-                    ],
-                  ),
-                ],
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline,
+                              color: primaryColor, size: 20),
+                          const SizedBox(width: 12),
+                          Text(
+                            "Version $latest_version_code",
+                            style: GoogleFonts.nunitoSans(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: textPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+
+                    // Buttons
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.grey,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 20, vertical: 12),
+                          ),
+                          child: Text(
+                            "LATER",
+                            style: GoogleFonts.nunitoSans(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        ElevatedButton(
+                          onPressed: () async {
+                            Navigator.pop(context); // Close the dialog
+                            String? taskId = await downloadAndInstallAPK(
+                                url, latest_version_code, context);
+                            if (!context.mounted) return;
+                            // Show download started dialog
+                            showDialog(
+                              context: context,
+                              barrierColor: Colors.black.withValues(alpha: 0.7),
+                              builder: (context) =>
+                                  DownloadProgressDialog(taskId: taskId),
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: primaryColor,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Text(
+                            "DOWNLOAD NOW",
+                            style: GoogleFonts.nunitoSans(
+                              fontWeight: FontWeight.w800,
+                              color: Colors.black,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-        );
+          );
+        }
       }
     }
+  } catch (e) {
+    print("Failed to connect to GitHub API. Check your internet connection.");
+    return;
   }
 }
 

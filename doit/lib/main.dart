@@ -32,8 +32,16 @@ Future<void> main() async {
   // 3. Await your other settings to ensure they are ready
   await Notifications().initNotificationSettings();
   await requestPermissions();
+  bool isProcessing = false;
 
-  runApp(const MyApp());
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AppProvider(isProcessing)),
+      ],
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatefulWidget {
@@ -48,45 +56,42 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: [ChangeNotifierProvider(create: (context) => AppProvider())],
-      child: MaterialApp(
-          debugShowCheckedModeBanner: false,
-          title: 'Elegant Task Manager',
-          theme: ThemeData.dark().copyWith(
-            scaffoldBackgroundColor: Colors.black,
-            colorScheme: const ColorScheme.dark().copyWith(
-              primary: const Color(0xFF81C784),
-              secondary: const Color(0xFFFFD740),
-            ),
+    return MaterialApp(
+        debugShowCheckedModeBanner: false,
+        title: 'DoIt',
+        theme: ThemeData.dark().copyWith(
+          scaffoldBackgroundColor: Colors.black,
+          colorScheme: const ColorScheme.dark().copyWith(
+            primary: const Color(0xFF81C784),
+            secondary: const Color(0xFFFFD740),
           ),
-          home: Scaffold(
-              extendBody: true,
-              body: Builder(
-                builder: (context) {
-                  switch (_currentBottomNavIndex) {
-                    case 0:
-                      return HomePage();
-                    case 1:
-                      return const HistoryPage();
-                    case 2:
-                      return const LevelsPage();
-                    case 3:
-                      return const SettingsPage();
-                    default:
-                      return HomePage();
-                  }
-                },
-              ),
-              bottomNavigationBar: // Floating Navigation Bar
-                  CustomFloatingNavBar(
-                currentIndex: _currentBottomNavIndex,
-                onTap: (index) {
-                  setState(() {
-                    _currentBottomNavIndex = index;
-                  });
-                },
-              ))),
-    );
+        ),
+        home: Scaffold(
+            extendBody: true,
+            body: Builder(
+              builder: (context) {
+                switch (_currentBottomNavIndex) {
+                  case 0:
+                    return HomePage();
+                  case 1:
+                    return const HistoryPage();
+                  case 2:
+                    return const LevelsPage();
+                  case 3:
+                    return const SettingsPage();
+                  default:
+                    return HomePage();
+                }
+              },
+            ),
+            bottomNavigationBar: // Floating Navigation Bar
+                CustomFloatingNavBar(
+              currentIndex: _currentBottomNavIndex,
+              onTap: (index) {
+                setState(() {
+                  _currentBottomNavIndex = index;
+                });
+              },
+            )));
   }
 }

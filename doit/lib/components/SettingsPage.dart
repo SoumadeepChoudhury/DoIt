@@ -1,3 +1,5 @@
+import 'package:doit/components/PrivacyPolicyPage.dart';
+import 'package:doit/components/TermsOfServicePage.dart';
 import 'package:doit/utils/Colors.dart';
 import 'package:doit/utils/FileManager.dart';
 import 'package:doit/utils/Notifications.dart';
@@ -215,13 +217,27 @@ class _SettingsPageState extends State<SettingsPage> {
                             _buildListTile(
                               title: 'Privacy Policy',
                               icon: Icons.lock_outline,
-                              onTap: () {},
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (context) =>
+                                          const PrivacyPolicyPage()),
+                                );
+                              },
                             ),
                             const Divider(height: 1, color: Colors.white12),
                             _buildListTile(
                               title: 'Terms of Service',
                               icon: Icons.description_outlined,
-                              onTap: () {},
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (context) =>
+                                          const TermsOfServicePage()),
+                                );
+                              },
                             ),
                             const Divider(height: 1, color: Colors.white12),
                             _buildListTile(

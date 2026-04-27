@@ -41,6 +41,8 @@ class _HomePageState extends State<HomePage> {
 
   int _progressValue = 0;
   int _currentLevel = 0;
+  bool isSelectionMode = false;
+  Set<int> selectedTaskIds = {};
 
   String screenTitle = "Today's Tasks";
 
@@ -56,7 +58,7 @@ class _HomePageState extends State<HomePage> {
         print("Error while checking update...");
       }
     });
-    updatePercentage(AppProvider());
+    updatePercentage(AppProvider(null));
     super.initState();
   }
 
@@ -103,7 +105,6 @@ class _HomePageState extends State<HomePage> {
       _currentLevel = level;
       _progressValue = value;
     });
-    print("Level: $level, Percentage: $value");
   }
 
   //filter todays task from appProvider.tasks and return the count
@@ -174,7 +175,7 @@ class _HomePageState extends State<HomePage> {
       // Check the level and navigate to the CelebrationPage
 
       if (appProvider.tasks.isNotEmpty &&
-          AppProvider().getCompletedTasksCount() ==
+          AppProvider(null).getCompletedTasksCount() ==
               getMaxNoOfCompletedTask(_currentLevel) &&
           !appProvider.celebrationShown) {
         appProvider.celebrationShown = !appProvider.celebrationShown;
@@ -207,75 +208,105 @@ class _HomePageState extends State<HomePage> {
               snap: true,
               elevation: 0,
               backgroundColor: Colors.transparent,
-              title: Text(
-                screenTitle,
-                style: GoogleFonts.nunitoSans(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 24,
-                  color: textPrimary,
-                  letterSpacing: -0.5,
-                ),
-              ),
+              title: isSelectionMode
+                  ? Text(
+                      "${selectedTaskIds.length} Selected",
+                      style: GoogleFonts.nunitoSans(
+                          fontWeight: FontWeight.w800, color: primaryColor),
+                    )
+                  : Text(
+                      screenTitle,
+                      style: GoogleFonts.nunitoSans(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 24,
+                        color: textPrimary,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
               centerTitle: false,
               actions: [
-                PopupMenuButton<String>(
-                  icon: Icon(Icons.more_vert,
-                      color: Colors.grey.withValues(alpha: 0.5)),
-                  color: surfaceColor.withValues(alpha: 0.9),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(
-                        color: primaryColor.withValues(alpha: 0.2), width: 1),
+                if (isSelectionMode)
+                  IconButton(
+                    icon: const Icon(Icons.delete, color: Colors.redAccent),
+                    onPressed: () {
+                      // Multi-delete logic
+                      for (var id in selectedTaskIds) {
+                        database.deleteTask(id);
+                      }
+                      appProvider.loadTasks();
+                      setState(() {
+                        isSelectionMode = false;
+                        selectedTaskIds.clear();
+                      });
+                    },
                   ),
-                  elevation: 4,
-                  onSelected: (value) {
-                    if (value == 'today') {
-                      // Handle Today's Tasks action
-                      setState(() {
-                        screenTitle = "Today's Tasks";
-                      });
-                    } else if (value == 'inbox') {
-                      // Handle Inbox action
-                      setState(() {
-                        screenTitle = "Inbox";
-                      });
-                    }
-                  },
-                  itemBuilder: (BuildContext context) => [
-                    PopupMenuItem<String>(
-                      value: 'today',
-                      child: Row(
-                        children: [
-                          Icon(Icons.calendar_today, color: primaryColor),
-                          const SizedBox(width: 12),
-                          Text(
-                            "Today's Tasks",
-                            style: GoogleFonts.nunitoSans(
-                              color: textPrimary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
+                if (isSelectionMode)
+                  IconButton(
+                    icon: const Icon(Icons.close, color: textPrimary),
+                    onPressed: () => setState(() {
+                      isSelectionMode = false;
+                      selectedTaskIds.clear();
+                    }),
+                  )
+                else
+                  PopupMenuButton<String>(
+                    icon: Icon(Icons.more_vert,
+                        color: Colors.grey.withValues(alpha: 0.5)),
+                    color: surfaceColor.withValues(alpha: 0.9),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(
+                          color: primaryColor.withValues(alpha: 0.2), width: 1),
                     ),
-                    PopupMenuItem<String>(
-                      value: 'inbox',
-                      child: Row(
-                        children: [
-                          Icon(Icons.inbox, color: primaryColor),
-                          const SizedBox(width: 12),
-                          Text(
-                            'Inbox',
-                            style: GoogleFonts.nunitoSans(
-                              color: textPrimary,
-                              fontWeight: FontWeight.w600,
+                    elevation: 4,
+                    onSelected: (value) {
+                      if (value == 'today') {
+                        // Handle Today's Tasks action
+                        setState(() {
+                          screenTitle = "Today's Tasks";
+                        });
+                      } else if (value == 'inbox') {
+                        // Handle Inbox action
+                        setState(() {
+                          screenTitle = "Inbox";
+                        });
+                      }
+                    },
+                    itemBuilder: (BuildContext context) => [
+                      PopupMenuItem<String>(
+                        value: 'today',
+                        child: Row(
+                          children: [
+                            Icon(Icons.calendar_today, color: primaryColor),
+                            const SizedBox(width: 12),
+                            Text(
+                              "Today's Tasks",
+                              style: GoogleFonts.nunitoSans(
+                                color: textPrimary,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
-                )
+                      PopupMenuItem<String>(
+                        value: 'inbox',
+                        child: Row(
+                          children: [
+                            Icon(Icons.inbox, color: primaryColor),
+                            const SizedBox(width: 12),
+                            Text(
+                              'Inbox',
+                              style: GoogleFonts.nunitoSans(
+                                color: textPrimary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  )
               ],
             ),
 
@@ -543,23 +574,55 @@ class _HomePageState extends State<HomePage> {
     required Color surfaceColor,
     required Color textPrimary,
   }) {
+    bool isThisTaskSelected = selectedTaskIds.contains(task?.id);
     return GestureDetector(
-      onTap: () => !isDone
-          ? Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => TaskEditorPage(
-                  task: task,
-                ),
-              ),
-            )
-          : null,
-      child: Container(
+      onLongPress: () {
+        setState(() {
+          isSelectionMode = true;
+          selectedTaskIds.add(task!.id);
+        });
+      },
+      onTap: () => {
+        if (isSelectionMode)
+          {
+            setState(() {
+              if (isThisTaskSelected) {
+                selectedTaskIds.remove(task!.id);
+                if (selectedTaskIds.isEmpty) isSelectionMode = false;
+              } else {
+                selectedTaskIds.add(task!.id);
+              }
+            }),
+          }
+        else
+          {
+            !isDone
+                ? Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => TaskEditorPage(
+                        task: task,
+                      ),
+                    ),
+                  )
+                : null
+          }
+      },
+      child: AnimatedContainer(
+        // Use AnimatedContainer for smooth selection feedback
+        duration: const Duration(milliseconds: 200),
         margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
         decoration: BoxDecoration(
-          color: surfaceColor.withValues(alpha: 0.7),
+          color: isThisTaskSelected
+              ? primaryColor.withValues(alpha: 0.1) // Highlight selected
+              : surfaceColor.withValues(alpha: 0.7),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: primaryColor.withValues(alpha: 0.1)),
+          border: Border.all(
+            color: isThisTaskSelected
+                ? primaryColor
+                : primaryColor.withValues(alpha: 0.1),
+            width: isThisTaskSelected ? 2 : 1,
+          ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.3),
@@ -571,27 +634,34 @@ class _HomePageState extends State<HomePage> {
         child: ListTile(
           contentPadding: const EdgeInsets.symmetric(horizontal: 16),
           minVerticalPadding: 0,
-          leading: Container(
-            width: 24,
-            height: 24,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: isDone ? accentColor : Colors.grey,
-                width: 2,
-              ),
-            ),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: () => onChanged(!isDone),
-                child: isDone
-                    ? Icon(Icons.check, size: 16, color: accentColor)
-                    : null,
-              ),
-            ),
-          ),
+          leading: isSelectionMode
+              ? Icon(
+                  isThisTaskSelected
+                      ? Icons.check_circle
+                      : Icons.radio_button_unchecked,
+                  color: isThisTaskSelected ? primaryColor : Colors.grey,
+                )
+              : Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isDone ? accentColor : Colors.grey,
+                      width: 2,
+                    ),
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () => onChanged(!isDone),
+                      child: isDone
+                          ? Icon(Icons.check, size: 16, color: accentColor)
+                          : null,
+                    ),
+                  ),
+                ),
           title: Row(
             children: [
               Expanded(

@@ -34,7 +34,7 @@ class _CelebrationPageState extends State<CelebrationPage> {
   void initState() {
     super.initState();
     // Fetch current level asynchronously
-    getCurrentLevel(AppProvider()).then((level) {
+    getCurrentLevel(AppProvider(null)).then((level) {
       setState(() {
         _currentLevel = level;
       });

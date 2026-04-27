@@ -38,7 +38,7 @@ class _TaskCompletionOverlayState extends State<TaskCompletionOverlay>
     );
 
     _controller.forward();
-    currentLevel = getCurrentLevel(AppProvider());
+    currentLevel = getCurrentLevel(AppProvider(null));
   }
 
   @override

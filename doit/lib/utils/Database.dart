@@ -124,7 +124,6 @@ class AppDatabase {
   Future<int> getCompletedTasksCount() async {
     final db = await database;
     final result = await db.rawQuery('SELECT count FROM completed where id=1');
-    print("Result: $result");
     return Sqflite.firstIntValue(result) ?? 0;
   }
 
