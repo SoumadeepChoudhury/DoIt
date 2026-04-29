@@ -37,6 +37,8 @@ class _HomePageState extends State<HomePage> {
 
   int _progressValue = 0;
   int _currentLevel = 0;
+  int? _lastCompletedTasksCount;
+  bool _isUpdatingProgress = false;
   bool isSelectionMode = false;
   Set<int> selectedTaskIds = {};
 
@@ -46,7 +48,7 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void initState() {
-    levelMessageFuture = getLevelMessage();
+    levelMessageFuture = Future.value("Loading...");
     WidgetsBinding.instance.addPostFrameCallback((_) {
       try {
         checkUpdate(context);
@@ -54,7 +56,6 @@ class _HomePageState extends State<HomePage> {
         print("Error while checking update...");
       }
     });
-    updatePercentage(AppProvider(null));
     super.initState();
   }
 
@@ -93,14 +94,67 @@ class _HomePageState extends State<HomePage> {
   //   await appProvider.loadTasks();
   // }
 
-  Future<void> updatePercentage(AppProvider appProvider) async {
-    final int level = await getCurrentLevel(appProvider);
-    final int value = await getPercentage(appProvider, level);
-    if (!mounted) return;
-    setState(() {
-      _currentLevel = level;
-      _progressValue = value;
-    });
+  int _getLevelForCompletedTasks(int completedTasks) {
+    int level = 1;
+    while (completedTasks >= getMaxNoOfCompletedTask(level)) {
+      level++;
+    }
+    return level;
+  }
+
+  int _getPercentageForCompletedTasks(int completedTasks, int level) {
+    final int maxTasksUpperLevel = getMaxNoOfCompletedTask(level);
+    final int maxTaskLowerLevel = getMaxNoOfCompletedTask(level - 1);
+    return ((completedTasks - maxTaskLowerLevel) /
+            (maxTasksUpperLevel - maxTaskLowerLevel) *
+            100)
+        .toInt();
+  }
+
+  String _getLevelMessageForProgress(int level, int percent) {
+    String status;
+
+    if (percent == 100) {
+      status = "Level Completed 🎉";
+    } else if (percent > 90) {
+      status = "Final Push ⚡";
+    } else if (percent > 70) {
+      status = "About to Level Up 🔥";
+    } else if (percent > 50) {
+      status = "Almost There ✨";
+    } else if (percent > 20) {
+      status = "Keep Going 💪";
+    } else {
+      status = "Good Start 🚀";
+    }
+
+    return "Level $level: $status";
+  }
+
+  Future<void> updatePercentage(AppProvider appProvider,
+      {bool force = false}) async {
+    if (_isUpdatingProgress) return;
+    _isUpdatingProgress = true;
+
+    try {
+      final int completedCount = await appProvider.getCompletedTasksCount();
+      if (!force && _lastCompletedTasksCount == completedCount) {
+        return;
+      }
+
+      final int level = _getLevelForCompletedTasks(completedCount);
+      final int value = _getPercentageForCompletedTasks(completedCount, level);
+      if (!mounted) return;
+      setState(() {
+        _lastCompletedTasksCount = completedCount;
+        _currentLevel = level;
+        _progressValue = value;
+        levelMessageFuture =
+            Future.value(_getLevelMessageForProgress(level, value));
+      });
+    } finally {
+      _isUpdatingProgress = false;
+    }
   }
 
   //filter todays task from appProvider.tasks and return the count
@@ -132,6 +186,10 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Consumer<AppProvider>(builder: (context, appProvider, child) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        updatePercentage(appProvider);
+      });
+
       var todaysTask = [];
       if (appProvider.tasks.isNotEmpty) {
         // Assigning today's task
