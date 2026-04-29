@@ -345,16 +345,28 @@ class AppDatabase {
   Future<void> _changeEverydayReportCompletedCount(
       String title, String description, int delta, String? date) async {
     final db = await database;
+    final normalizedTitle = title.trim();
+    final normalizedDescription = description.trim();
     await db.transaction((txn) async {
-      final rows = await txn.query(
+      var rows = await txn.query(
         everydayReportsTable,
         columns: [columnCompletedCount],
         where: '$columnTitle = ? AND $columnDescription = ?',
-        whereArgs: [title, description],
+        whereArgs: [normalizedTitle, normalizedDescription],
         limit: 1,
       );
 
-      if (rows.isEmpty) return;
+      if (rows.isEmpty) {
+        await _syncEverydayReportsFromTasks(txn);
+        rows = await txn.query(
+          everydayReportsTable,
+          columns: [columnCompletedCount],
+          where: '$columnTitle = ? AND $columnDescription = ?',
+          whereArgs: [normalizedTitle, normalizedDescription],
+          limit: 1,
+        );
+        if (rows.isEmpty) return;
+      }
 
       final currentCount = rows.first[columnCompletedCount] as int? ?? 0;
       final nextCount = currentCount + delta;
@@ -362,7 +374,7 @@ class AppDatabase {
         everydayReportsTable,
         {columnCompletedCount: nextCount < 0 ? 0 : nextCount},
         where: '$columnTitle = ? AND $columnDescription = ?',
-        whereArgs: [title, description],
+        whereArgs: [normalizedTitle, normalizedDescription],
       );
 
       final monthDate = _tryParseTaskDate(date ?? '') ?? DateTime.now();
@@ -372,7 +384,7 @@ class AppDatabase {
         columns: [columnCompletedCount],
         where:
             '$columnTitle = ? AND $columnDescription = ? AND $columnMonth = ?',
-        whereArgs: [title, description, month],
+        whereArgs: [normalizedTitle, normalizedDescription, month],
         limit: 1,
       );
 
@@ -380,8 +392,8 @@ class AppDatabase {
         await txn.insert(
           everydayReportMonthsTable,
           {
-            columnTitle: title.trim(),
-            columnDescription: description.trim(),
+            columnTitle: normalizedTitle,
+            columnDescription: normalizedDescription,
             columnMonth: month,
             columnCompletedCount: delta > 0 ? 1 : 0,
           },
@@ -398,7 +410,7 @@ class AppDatabase {
         {columnCompletedCount: nextMonthCount < 0 ? 0 : nextMonthCount},
         where:
             '$columnTitle = ? AND $columnDescription = ? AND $columnMonth = ?',
-        whereArgs: [title, description, month],
+        whereArgs: [normalizedTitle, normalizedDescription, month],
       );
     });
   }
@@ -442,9 +454,14 @@ class AppDatabase {
           : null;
       final startDate = storedStartDate ?? parsedDates.first;
       final totalCount = _getEverydayTotalCount(startDate);
+      final completedFromTasks =
+          relatedTasks.where((task) => task[columnIsDone] == 1).length;
       final completedCount = existingReports.isNotEmpty
-          ? existingReports.first[columnCompletedCount] as int? ?? 0
-          : relatedTasks.where((task) => task[columnIsDone] == 1).length;
+          ? _maxInt(
+              existingReports.first[columnCompletedCount] as int? ?? 0,
+              completedFromTasks,
+            )
+          : completedFromTasks;
 
       await db.insert(
         everydayReportsTable,
@@ -531,16 +548,20 @@ class AppDatabase {
           limit: 1,
         );
 
+        final completedFromTasks = relatedTasks.where((task) {
+          final taskDate =
+              _tryParseTaskDate((task[columnDate] ?? '').toString());
+          return task[columnIsDone] == 1 &&
+              taskDate != null &&
+              taskDate.year == cursor.year &&
+              taskDate.month == cursor.month;
+        }).length;
         final completedCount = existingMonthRows.isNotEmpty
-            ? existingMonthRows.first[columnCompletedCount] as int? ?? 0
-            : relatedTasks.where((task) {
-                final taskDate =
-                    _tryParseTaskDate((task[columnDate] ?? '').toString());
-                return task[columnIsDone] == 1 &&
-                    taskDate != null &&
-                    taskDate.year == cursor.year &&
-                    taskDate.month == cursor.month;
-              }).length;
+            ? _maxInt(
+                existingMonthRows.first[columnCompletedCount] as int? ?? 0,
+                completedFromTasks,
+              )
+            : completedFromTasks;
 
         await db.insert(
           everydayReportMonthsTable,
@@ -591,6 +612,10 @@ class AppDatabase {
     final today = DateTime(now.year, now.month, now.day);
     if (start.isAfter(today)) return 0;
     return today.difference(start).inDays + 1;
+  }
+
+  int _maxInt(int a, int b) {
+    return a > b ? a : b;
   }
 
   DateTime _monthOnly(DateTime date) {

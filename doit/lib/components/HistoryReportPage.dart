@@ -15,7 +15,8 @@ class HistoryReportPage extends StatefulWidget {
   State<HistoryReportPage> createState() => _HistoryReportPageState();
 }
 
-class _HistoryReportPageState extends State<HistoryReportPage> {
+class _HistoryReportPageState extends State<HistoryReportPage>
+    with WidgetsBindingObserver {
   final AppDatabase _database = AppDatabase.instance;
   late Future<List<String>> _monthsFuture;
   Future<List<EverydayReport>>? _reportsFuture;
@@ -24,7 +25,43 @@ class _HistoryReportPageState extends State<HistoryReportPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _refreshReportData();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshReportData();
+    }
+  }
+
+  void _refreshReportData({String? selectedMonth}) {
     _monthsFuture = _database.getAvailableEverydayReportMonths();
+    _reportsFuture = _monthsFuture.then((months) {
+      final nextMonth = selectedMonth ??
+          (_selectedMonth != null && months.contains(_selectedMonth)
+              ? _selectedMonth
+              : months.isNotEmpty
+                  ? months.first
+                  : null);
+      _selectedMonth = nextMonth;
+      if (nextMonth == null) return <EverydayReport>[];
+      return _loadReportsForMonth(nextMonth);
+    });
+
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _handleRefresh() async {
+    _refreshReportData();
+    await _reportsFuture;
   }
 
   @override
@@ -33,10 +70,6 @@ class _HistoryReportPageState extends State<HistoryReportPage> {
       future: _monthsFuture,
       builder: (context, monthSnapshot) {
         final months = monthSnapshot.data ?? [];
-        if (_selectedMonth == null && months.isNotEmpty) {
-          _selectedMonth = months.first;
-          _reportsFuture = _loadReportsForMonth(months.first);
-        }
 
         return FutureBuilder<List<EverydayReport>>(
           future: _reportsFuture,
@@ -70,90 +103,105 @@ class _HistoryReportPageState extends State<HistoryReportPage> {
                     transform: const GradientRotation(0.1),
                   ),
                 ),
-                child: CustomScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  slivers: [
-                    SliverAppBar(
-                      floating: true,
-                      snap: true,
-                      elevation: 0,
-                      backgroundColor: Colors.transparent,
-                      leading: IconButton(
-                        icon: const Icon(Icons.arrow_back, color: textPrimary),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                      title: Text(
-                        'Monthly Report',
-                        style: GoogleFonts.nunitoSans(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 24,
-                          color: textPrimary,
-                        ),
-                      ),
-                      centerTitle: false,
-                      actions: [
-                        IconButton(
-                          icon: Icon(Icons.calendar_month_rounded,
-                              color: primaryColor),
-                          onPressed: months.isEmpty
-                              ? null
-                              : () => _showMonthPicker(months),
-                        ),
-                      ],
+                child: RefreshIndicator(
+                  color: primaryColor,
+                  backgroundColor: surfaceColor,
+                  onRefresh: _handleRefresh,
+                  child: CustomScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(
+                      parent: BouncingScrollPhysics(),
                     ),
-                    SliverPadding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 24, vertical: 16),
-                      sliver: SliverToBoxAdapter(
-                        child: _ReportHeroCard(
-                          completed: totalCompleted,
-                          total: totalExpected,
-                          progress: overallProgress,
-                          taskCount: reports.length,
-                          monthLabel: monthLabel,
+                    slivers: [
+                      SliverAppBar(
+                        floating: true,
+                        snap: true,
+                        elevation: 0,
+                        backgroundColor: Colors.transparent,
+                        leading: IconButton(
+                          icon:
+                              const Icon(Icons.arrow_back, color: textPrimary),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                        title: Text(
+                          'Monthly Report',
+                          style: GoogleFonts.nunitoSans(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 24,
+                            color: textPrimary,
+                          ),
+                        ),
+                        centerTitle: false,
+                        actions: [
+                          IconButton(
+                            icon: Icon(Icons.refresh_rounded,
+                                color: textPrimary.withValues(alpha: 0.85)),
+                            onPressed: _refreshReportData,
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.calendar_month_rounded,
+                                color: primaryColor),
+                            onPressed: months.isEmpty
+                                ? null
+                                : () => _showMonthPicker(months),
+                          ),
+                        ],
+                      ),
+                      SliverPadding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 24, vertical: 16),
+                        sliver: SliverToBoxAdapter(
+                          child: _ReportHeroCard(
+                            completed: totalCompleted,
+                            total: totalExpected,
+                            progress: overallProgress,
+                            taskCount: reports.length,
+                            monthLabel: monthLabel,
+                          ),
                         ),
                       ),
-                    ),
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(24, 2, 24, 10),
-                      sliver: SliverToBoxAdapter(
-                        child: Center(
-                          child: Text(
-                            monthLabel,
-                            style: GoogleFonts.nunitoSans(
-                              color: primaryColor,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(24, 2, 24, 10),
+                        sliver: SliverToBoxAdapter(
+                          child: Center(
+                            child: Text(
+                              monthLabel,
+                              style: GoogleFonts.nunitoSans(
+                                color: primaryColor,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                    if (isLoading)
-                      const SliverFillRemaining(
-                        hasScrollBody: false,
-                        child: Center(
-                          child: CircularProgressIndicator(color: primaryColor),
+                      if (isLoading)
+                        const SliverFillRemaining(
+                          hasScrollBody: false,
+                          child: Center(
+                            child:
+                                CircularProgressIndicator(color: primaryColor),
+                          ),
+                        )
+                      else if (reports.isEmpty)
+                        SliverFillRemaining(
+                          hasScrollBody: false,
+                          child: _EmptyReportState(monthLabel: monthLabel),
+                        )
+                      else
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(24, 8, 24, 96),
+                          sliver: SliverList.separated(
+                            itemCount: reports.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 14),
+                            itemBuilder: (context, index) {
+                              return _EverydayReportCard(
+                                  report: reports[index]);
+                            },
+                          ),
                         ),
-                      )
-                    else if (reports.isEmpty)
-                      SliverFillRemaining(
-                        hasScrollBody: false,
-                        child: _EmptyReportState(monthLabel: monthLabel),
-                      )
-                    else
-                      SliverPadding(
-                        padding: const EdgeInsets.fromLTRB(24, 8, 24, 96),
-                        sliver: SliverList.separated(
-                          itemCount: reports.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 14),
-                          itemBuilder: (context, index) {
-                            return _EverydayReportCard(report: reports[index]);
-                          },
-                        ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             );
@@ -219,10 +267,7 @@ class _HistoryReportPageState extends State<HistoryReportPage> {
                     child: ListTile(
                       onTap: () {
                         Navigator.pop(context);
-                        setState(() {
-                          _selectedMonth = month;
-                          _reportsFuture = _loadReportsForMonth(month);
-                        });
+                        _refreshReportData(selectedMonth: month);
                       },
                       leading: Icon(Icons.calendar_today_rounded,
                           color: primaryColor),
