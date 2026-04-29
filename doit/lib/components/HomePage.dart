@@ -36,7 +36,6 @@ class _HomePageState extends State<HomePage> {
   final AppDatabase database = AppDatabase.instance;
 
   int _progressValue = 0;
-  int _currentLevel = 0;
   int? _lastCompletedTasksCount;
   bool _isUpdatingProgress = false;
   bool isSelectionMode = false;
@@ -111,6 +110,17 @@ class _HomePageState extends State<HomePage> {
         .toInt();
   }
 
+  bool _isLevelCompletionThreshold(int completedTasks) {
+    if (completedTasks <= 0) return false;
+
+    int level = 1;
+    while (getMaxNoOfCompletedTask(level) < completedTasks) {
+      level++;
+    }
+
+    return completedTasks == getMaxNoOfCompletedTask(level);
+  }
+
   String _getLevelMessageForProgress(int level, int percent) {
     String status;
 
@@ -147,7 +157,6 @@ class _HomePageState extends State<HomePage> {
       if (!mounted) return;
       setState(() {
         _lastCompletedTasksCount = completedCount;
-        _currentLevel = level;
         _progressValue = value;
         levelMessageFuture =
             Future.value(_getLevelMessageForProgress(level, value));
@@ -231,7 +240,7 @@ class _HomePageState extends State<HomePage> {
       if (appProvider.tasks.isNotEmpty && !appProvider.celebrationShown) {
         appProvider.getCompletedTasksCount().then((completedCount) {
           if (!mounted) return;
-          if (completedCount == getMaxNoOfCompletedTask(_currentLevel)) {
+          if (_isLevelCompletionThreshold(completedCount)) {
             appProvider.celebrationShown = true;
             WidgetsBinding.instance.addPostFrameCallback((_) {
               Navigator.push(
