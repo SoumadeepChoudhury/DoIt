@@ -20,8 +20,10 @@ class _TaskCompletionOverlayState extends State<TaskCompletionOverlay>
   late Animation<double> _opacityAnimation;
   late Future<int> currentLevel;
 
+  late int totalTaskCompleted;
+
   @override
-  void initState() {
+  void initState() async {
     super.initState();
 
     _controller = AnimationController(
@@ -39,6 +41,7 @@ class _TaskCompletionOverlayState extends State<TaskCompletionOverlay>
 
     _controller.forward();
     currentLevel = getCurrentLevel(AppProvider(null));
+    totalTaskCompleted = await AppProvider(null).getCompletedTasksCount();
   }
 
   @override
@@ -143,7 +146,7 @@ class _TaskCompletionOverlayState extends State<TaskCompletionOverlay>
                                       border: Border.all(color: primaryColor),
                                     ),
                                     child: Text(
-                                      'Total Tasks Completed: ${appProvider.tasks.where((task) => task.isDone).length}',
+                                      'Total Tasks Completed: $totalTaskCompleted',
                                       style: GoogleFonts.nunitoSans(
                                         fontSize: 16,
                                         fontWeight: FontWeight.w700,

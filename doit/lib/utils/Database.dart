@@ -1,3 +1,4 @@
+import 'package:intl/intl.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
@@ -14,6 +15,12 @@ class AppDatabase {
   final String columnRepeat = "repeat";
   final String columnDate = "date";
   final String columnTime = "time";
+  final String everydayReportsTable = "everyday_reports";
+  final String everydayReportMonthsTable = "everyday_report_months";
+  final String columnStartDate = "startDate";
+  final String columnTotalCount = "totalCount";
+  final String columnCompletedCount = "completedCount";
+  final String columnMonth = "month";
 
   AppDatabase._constructor();
 
@@ -29,7 +36,7 @@ class AppDatabase {
 
     final database = await openDatabase(
       databasePath,
-      version: 2,
+      version: 4,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE tasks (
@@ -56,17 +63,58 @@ class AppDatabase {
           )
         ''');
         await db.insert('completed', {'id': 1, 'count': 0});
+        await _createEverydayReportsTable(db);
+        await _createEverydayReportMonthsTable(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
           await db.execute(
-              'CREATE TABLE completed (id INTEGER PRIMARY KEY,count INTEGER DEFAULT 0)');
-          await db.insert('completed', {'id': 1, 'count': 0});
+              'CREATE TABLE IF NOT EXISTS completed (id INTEGER PRIMARY KEY,count INTEGER DEFAULT 0)');
+          await db.insert('completed', {'id': 1, 'count': 0},
+              conflictAlgorithm: ConflictAlgorithm.ignore);
           print("Database upgraded to version 2: added 'completed' table.");
+        }
+        if (oldVersion < 3) {
+          await _createEverydayReportsTable(db);
+          print(
+              "Database upgraded to version 3: added 'everyday_reports' table.");
+        }
+        if (oldVersion < 4) {
+          await _createEverydayReportMonthsTable(db);
+          await _syncEverydayReportsFromTasks(db);
+          print(
+              "Database upgraded to version 4: added 'everyday_report_months' table.");
         }
       },
     );
     return database;
+  }
+
+  Future<void> _createEverydayReportsTable(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $everydayReportsTable (
+        $columnId INTEGER PRIMARY KEY AUTOINCREMENT,
+        $columnTitle TEXT NOT NULL,
+        $columnDescription TEXT NOT NULL DEFAULT '',
+        $columnStartDate TEXT NOT NULL,
+        $columnTotalCount INTEGER DEFAULT 0,
+        $columnCompletedCount INTEGER DEFAULT 0,
+        UNIQUE($columnTitle, $columnDescription)
+      )
+    ''');
+  }
+
+  Future<void> _createEverydayReportMonthsTable(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $everydayReportMonthsTable (
+        $columnId INTEGER PRIMARY KEY AUTOINCREMENT,
+        $columnTitle TEXT NOT NULL,
+        $columnDescription TEXT NOT NULL DEFAULT '',
+        $columnMonth TEXT NOT NULL,
+        $columnCompletedCount INTEGER DEFAULT 0,
+        UNIQUE($columnTitle, $columnDescription, $columnMonth)
+      )
+    ''');
   }
 
   // Add New task
@@ -103,9 +151,10 @@ class AppDatabase {
   }
 
   // Delete Task
-  void deleteTask(int id) async {
+  Future<void> deleteTask(int id) async {
     final db = await database;
     await db.delete(tableName, where: '$columnId = ?', whereArgs: [id]);
+    await syncEverydayReportsFromTasks();
   }
 
   // Get All Tasks
@@ -197,5 +246,370 @@ class AppDatabase {
         }
       }
     });
+  }
+
+  Future<List<Map<String, dynamic>>> getEverydayReports() async {
+    final db = await database;
+    await syncEverydayReportsFromTasks();
+    return await db.query(everydayReportsTable);
+  }
+
+  Future<List<String>> getAvailableEverydayReportMonths() async {
+    final db = await database;
+    await syncEverydayReportsFromTasks();
+
+    final dateCandidates = <DateTime>[];
+    final tasks = await db.query(tableName, columns: [columnDate]);
+    for (final task in tasks) {
+      final taskDate = _tryParseTaskDate((task[columnDate] ?? '').toString());
+      if (taskDate != null) dateCandidates.add(taskDate);
+    }
+
+    final reports =
+        await db.query(everydayReportsTable, columns: [columnStartDate]);
+    for (final report in reports) {
+      final startDate =
+          _tryParseTaskDate((report[columnStartDate] ?? '').toString());
+      if (startDate != null) dateCandidates.add(startDate);
+    }
+
+    final storedMonths =
+        await db.query(everydayReportMonthsTable, columns: [columnMonth]);
+    for (final month in storedMonths) {
+      final monthDate = _tryParseMonth((month[columnMonth] ?? '').toString());
+      if (monthDate != null) dateCandidates.add(monthDate);
+    }
+
+    final now = DateTime.now();
+    final currentMonth = DateTime(now.year, now.month);
+    final installMonth = dateCandidates.isEmpty
+        ? currentMonth
+        : _monthOnly(dateCandidates.reduce((a, b) => a.isBefore(b) ? a : b));
+    final sixMonthWindowStart = _addMonths(currentMonth, -5);
+    final firstVisibleMonth = installMonth.isAfter(sixMonthWindowStart)
+        ? installMonth
+        : sixMonthWindowStart;
+
+    final months = <String>[];
+    DateTime cursor = currentMonth;
+    while (!cursor.isBefore(firstVisibleMonth)) {
+      months.add(DateFormat('yyyy-M').format(cursor));
+      cursor = _addMonths(cursor, -1);
+    }
+    return months;
+  }
+
+  Future<List<Map<String, dynamic>>> getEverydayReportsForMonth(
+      String month) async {
+    final db = await database;
+    await syncEverydayReportsFromTasks();
+    final selectedMonth = _tryParseMonth(month) ?? DateTime.now();
+    final daysInMonth = _daysInMonth(selectedMonth);
+    final rows = await db.query(
+      everydayReportMonthsTable,
+      where: '$columnMonth = ?',
+      whereArgs: [month],
+    );
+
+    return rows.map((row) {
+      return {
+        columnTitle: row[columnTitle],
+        columnDescription: row[columnDescription],
+        columnStartDate: DateFormat('yyyy-M-d')
+            .format(DateTime(selectedMonth.year, selectedMonth.month, 1)),
+        columnTotalCount: daysInMonth,
+        columnCompletedCount: row[columnCompletedCount],
+      };
+    }).toList();
+  }
+
+  Future<void> syncEverydayReportsFromTasks() async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await _syncEverydayReportsFromTasks(txn);
+    });
+  }
+
+  Future<void> incrementEverydayReportCompletedCount(
+      String title, String description,
+      [String? date]) async {
+    await _changeEverydayReportCompletedCount(title, description, 1, date);
+  }
+
+  Future<void> decrementEverydayReportCompletedCount(
+      String title, String description,
+      [String? date]) async {
+    await _changeEverydayReportCompletedCount(title, description, -1, date);
+  }
+
+  Future<void> _changeEverydayReportCompletedCount(
+      String title, String description, int delta, String? date) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      final rows = await txn.query(
+        everydayReportsTable,
+        columns: [columnCompletedCount],
+        where: '$columnTitle = ? AND $columnDescription = ?',
+        whereArgs: [title, description],
+        limit: 1,
+      );
+
+      if (rows.isEmpty) return;
+
+      final currentCount = rows.first[columnCompletedCount] as int? ?? 0;
+      final nextCount = currentCount + delta;
+      await txn.update(
+        everydayReportsTable,
+        {columnCompletedCount: nextCount < 0 ? 0 : nextCount},
+        where: '$columnTitle = ? AND $columnDescription = ?',
+        whereArgs: [title, description],
+      );
+
+      final monthDate = _tryParseTaskDate(date ?? '') ?? DateTime.now();
+      final month = DateFormat('yyyy-M').format(monthDate);
+      final monthRows = await txn.query(
+        everydayReportMonthsTable,
+        columns: [columnCompletedCount],
+        where:
+            '$columnTitle = ? AND $columnDescription = ? AND $columnMonth = ?',
+        whereArgs: [title, description, month],
+        limit: 1,
+      );
+
+      if (monthRows.isEmpty) {
+        await txn.insert(
+          everydayReportMonthsTable,
+          {
+            columnTitle: title.trim(),
+            columnDescription: description.trim(),
+            columnMonth: month,
+            columnCompletedCount: delta > 0 ? 1 : 0,
+          },
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+        return;
+      }
+
+      final currentMonthCount =
+          monthRows.first[columnCompletedCount] as int? ?? 0;
+      final nextMonthCount = currentMonthCount + delta;
+      await txn.update(
+        everydayReportMonthsTable,
+        {columnCompletedCount: nextMonthCount < 0 ? 0 : nextMonthCount},
+        where:
+            '$columnTitle = ? AND $columnDescription = ? AND $columnMonth = ?',
+        whereArgs: [title, description, month],
+      );
+    });
+  }
+
+  Future<void> _syncEverydayReportsFromTasks(DatabaseExecutor db) async {
+    final tasks = await db.query(tableName);
+    final activeEverydayTasks =
+        tasks.where((task) => task[columnRepeat] == "Everyday").toList();
+    final activeKeys = <String>{};
+
+    for (final everydayTask in activeEverydayTasks) {
+      final title = (everydayTask[columnTitle] ?? '').toString().trim();
+      final description =
+          (everydayTask[columnDescription] ?? '').toString().trim();
+      final key = _everydayReportKey(title, description);
+      if (!activeKeys.add(key)) continue;
+
+      final existingReports = await db.query(
+        everydayReportsTable,
+        where: '$columnTitle = ? AND $columnDescription = ?',
+        whereArgs: [title, description],
+        limit: 1,
+      );
+
+      final relatedTasks = tasks.where((task) {
+        return (task[columnTitle] ?? '').toString().trim() == title &&
+            (task[columnDescription] ?? '').toString().trim() == description;
+      }).toList();
+
+      final parsedDates = relatedTasks
+          .map((task) => _tryParseTaskDate((task[columnDate] ?? '').toString()))
+          .whereType<DateTime>()
+          .toList()
+        ..sort();
+
+      if (parsedDates.isEmpty) continue;
+
+      final storedStartDate = existingReports.isNotEmpty
+          ? _tryParseTaskDate(
+              (existingReports.first[columnStartDate] ?? '').toString())
+          : null;
+      final startDate = storedStartDate ?? parsedDates.first;
+      final totalCount = _getEverydayTotalCount(startDate);
+      final completedCount = existingReports.isNotEmpty
+          ? existingReports.first[columnCompletedCount] as int? ?? 0
+          : relatedTasks.where((task) => task[columnIsDone] == 1).length;
+
+      await db.insert(
+        everydayReportsTable,
+        {
+          columnTitle: title,
+          columnDescription: description,
+          columnStartDate: DateFormat('yyyy-M-d').format(startDate),
+          columnTotalCount: totalCount,
+          columnCompletedCount: completedCount,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+
+    await _syncEverydayReportMonthsFromTasks(db, tasks, activeKeys);
+
+    final reports = await db.query(everydayReportsTable);
+    for (final report in reports) {
+      final key = _everydayReportKey(
+        (report[columnTitle] ?? '').toString().trim(),
+        (report[columnDescription] ?? '').toString().trim(),
+      );
+      if (!activeKeys.contains(key)) {
+        await db.delete(
+          everydayReportsTable,
+          where: '$columnId = ?',
+          whereArgs: [report[columnId]],
+        );
+      }
+    }
+  }
+
+  Future<void> _syncEverydayReportMonthsFromTasks(DatabaseExecutor db,
+      List<Map<String, dynamic>> tasks, Set<String> activeKeys) async {
+    final now = DateTime.now();
+    final currentMonth = DateTime(now.year, now.month);
+    final activeEverydayTasks =
+        tasks.where((task) => task[columnRepeat] == "Everyday").toList();
+    final activeMonthKeys = <String>{};
+
+    for (final everydayTask in activeEverydayTasks) {
+      final title = (everydayTask[columnTitle] ?? '').toString().trim();
+      final description =
+          (everydayTask[columnDescription] ?? '').toString().trim();
+      final reportKey = _everydayReportKey(title, description);
+      if (!activeKeys.contains(reportKey)) continue;
+
+      final relatedTasks = tasks.where((task) {
+        return (task[columnTitle] ?? '').toString().trim() == title &&
+            (task[columnDescription] ?? '').toString().trim() == description;
+      }).toList();
+
+      final parsedDates = relatedTasks
+          .map((task) => _tryParseTaskDate((task[columnDate] ?? '').toString()))
+          .whereType<DateTime>()
+          .toList()
+        ..sort();
+      if (parsedDates.isEmpty) continue;
+
+      final aggregateRows = await db.query(
+        everydayReportsTable,
+        columns: [columnStartDate],
+        where: '$columnTitle = ? AND $columnDescription = ?',
+        whereArgs: [title, description],
+        limit: 1,
+      );
+      final aggregateStartDate = aggregateRows.isNotEmpty
+          ? _tryParseTaskDate(
+              (aggregateRows.first[columnStartDate] ?? '').toString())
+          : null;
+      DateTime cursor = _monthOnly(aggregateStartDate ?? parsedDates.first);
+
+      while (!cursor.isAfter(currentMonth)) {
+        final month = DateFormat('yyyy-M').format(cursor);
+        final monthKey = '$reportKey|$month';
+        activeMonthKeys.add(monthKey);
+
+        final existingMonthRows = await db.query(
+          everydayReportMonthsTable,
+          columns: [columnCompletedCount],
+          where:
+              '$columnTitle = ? AND $columnDescription = ? AND $columnMonth = ?',
+          whereArgs: [title, description, month],
+          limit: 1,
+        );
+
+        final completedCount = existingMonthRows.isNotEmpty
+            ? existingMonthRows.first[columnCompletedCount] as int? ?? 0
+            : relatedTasks.where((task) {
+                final taskDate =
+                    _tryParseTaskDate((task[columnDate] ?? '').toString());
+                return task[columnIsDone] == 1 &&
+                    taskDate != null &&
+                    taskDate.year == cursor.year &&
+                    taskDate.month == cursor.month;
+              }).length;
+
+        await db.insert(
+          everydayReportMonthsTable,
+          {
+            columnTitle: title,
+            columnDescription: description,
+            columnMonth: month,
+            columnCompletedCount: completedCount,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+
+        cursor = _addMonths(cursor, 1);
+      }
+    }
+
+    final monthRows = await db.query(everydayReportMonthsTable);
+    for (final row in monthRows) {
+      final rowKey = '${_everydayReportKey(
+        (row[columnTitle] ?? '').toString().trim(),
+        (row[columnDescription] ?? '').toString().trim(),
+      )}|${row[columnMonth]}';
+      if (!activeMonthKeys.contains(rowKey)) {
+        await db.delete(
+          everydayReportMonthsTable,
+          where: '$columnId = ?',
+          whereArgs: [row[columnId]],
+        );
+      }
+    }
+  }
+
+  String _everydayReportKey(String title, String description) {
+    return '$title|$description';
+  }
+
+  DateTime? _tryParseTaskDate(String date) {
+    try {
+      return DateFormat('yyyy-M-d').parse(date);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  int _getEverydayTotalCount(DateTime startDate) {
+    final start = DateTime(startDate.year, startDate.month, startDate.day);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    if (start.isAfter(today)) return 0;
+    return today.difference(start).inDays + 1;
+  }
+
+  DateTime _monthOnly(DateTime date) {
+    return DateTime(date.year, date.month);
+  }
+
+  DateTime _addMonths(DateTime date, int months) {
+    return DateTime(date.year, date.month + months);
+  }
+
+  DateTime? _tryParseMonth(String month) {
+    try {
+      return DateFormat('yyyy-M').parse(month);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  int _daysInMonth(DateTime month) {
+    return DateTime(month.year, month.month + 1, 0).day;
   }
 }

@@ -1,9 +1,11 @@
+// ignore_for_file: file_names
+
+import 'package:doit/components/HistoryReportPage.dart';
 import 'package:doit/utils/Colors.dart';
 import 'package:doit/utils/Database.dart';
 import 'package:doit/utils/Provider.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
 import 'package:lottie/lottie.dart';
 import 'package:provider/provider.dart';
 
@@ -61,108 +63,63 @@ class _HistoryPageState extends State<HistoryPage> {
                             letterSpacing: -0.5),
                       ),
                       Spacer(),
-                      IconButton(
-                        icon: Icon(Icons.info_outline, color: primaryColor),
-                        onPressed: () {
-                          showDialog(
-                            context: context,
-                            barrierColor: Colors.transparent,
-                            builder: (context) => Stack(
+                      PopupMenuButton<String>(
+                        icon: Icon(Icons.more_vert, color: primaryColor),
+                        color: surfaceColor.withValues(alpha: 0.95),
+                        elevation: 8,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          side: BorderSide(
+                            color: primaryColor.withValues(alpha: 0.22),
+                          ),
+                        ),
+                        onSelected: (value) {
+                          if (value == 'info') {
+                            _showHistoryInfo(context);
+                          } else if (value == 'report') {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const HistoryReportPage(),
+                              ),
+                            );
+                          }
+                        },
+                        itemBuilder: (BuildContext context) => [
+                          PopupMenuItem<String>(
+                            value: 'info',
+                            child: Row(
                               children: [
-                                // Background dimmer
-                                Positioned.fill(
-                                  child: GestureDetector(
-                                    onTap: () => Navigator.pop(context),
-                                    child: Container(
-                                      color:
-                                          Colors.black.withValues(alpha: 0.4),
-                                    ),
-                                  ),
-                                ),
-
-                                // Tooltip positioning (adjust right and top values as needed)
-                                Positioned(
-                                  right: 24,
-                                  top: kToolbarHeight + 16, // Below app bar
-                                  child: Material(
-                                    color: Colors.transparent,
-                                    child: Container(
-                                      width: 280,
-                                      padding: const EdgeInsets.all(20),
-                                      decoration: BoxDecoration(
-                                        color: surfaceColor.withValues(
-                                            alpha: 0.95),
-                                        borderRadius: BorderRadius.circular(16),
-                                        border: Border.all(
-                                            color: primaryColor.withValues(
-                                                alpha: 0.3)),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: Colors.black
-                                                .withValues(alpha: 0.3),
-                                            blurRadius: 20,
-                                            spreadRadius: 2,
-                                          )
-                                        ],
-                                      ),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            children: [
-                                              Icon(Icons.history,
-                                                  size: 24,
-                                                  color: primaryColor),
-                                              const SizedBox(width: 12),
-                                              Text(
-                                                "Track History",
-                                                style: GoogleFonts.nunitoSans(
-                                                  fontSize: 18,
-                                                  fontWeight: FontWeight.w800,
-                                                  color: primaryColor,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 16),
-                                          Text(
-                                            "We preserve your completed tasks for 30 days so you can revisit achievements. After this period, items are automatically removed to maintain a clean, focused workspace that reflects your current priorities.",
-                                            style: GoogleFonts.nunitoSans(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w600,
-                                              color: textPrimary.withValues(
-                                                  alpha: 0.9),
-                                              height: 1.5,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 20),
-                                          Align(
-                                            alignment: Alignment.centerRight,
-                                            child: TextButton(
-                                              onPressed: () =>
-                                                  Navigator.pop(context),
-                                              style: TextButton.styleFrom(
-                                                foregroundColor: primaryColor,
-                                              ),
-                                              child: Text(
-                                                'GOT IT',
-                                                style: GoogleFonts.nunitoSans(
-                                                  fontWeight: FontWeight.w800,
-                                                  letterSpacing: 1.1,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
+                                Icon(Icons.info_outline, color: primaryColor),
+                                const SizedBox(width: 12),
+                                Text(
+                                  'Info',
+                                  style: GoogleFonts.nunitoSans(
+                                    color: textPrimary,
+                                    fontWeight: FontWeight.w700,
                                   ),
                                 ),
                               ],
                             ),
-                          );
-                        },
+                          ),
+                          PopupMenuItem<String>(
+                            value: 'report',
+                            child: Row(
+                              children: [
+                                Icon(Icons.bar_chart_rounded,
+                                    color: primaryColor),
+                                const SizedBox(width: 12),
+                                Text(
+                                  'Report',
+                                  style: GoogleFonts.nunitoSans(
+                                    color: textPrimary,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       )
                     ],
                   ),
@@ -289,6 +246,95 @@ class _HistoryPageState extends State<HistoryPage> {
           ),
         );
       },
+    );
+  }
+
+  void _showHistoryInfo(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.transparent,
+      builder: (context) => Stack(
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Container(
+                color: Colors.black.withValues(alpha: 0.4),
+              ),
+            ),
+          ),
+          Positioned(
+            right: 24,
+            top: kToolbarHeight + 16,
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                width: 280,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: surfaceColor.withValues(alpha: 0.95),
+                  borderRadius: BorderRadius.circular(16),
+                  border:
+                      Border.all(color: primaryColor.withValues(alpha: 0.3)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.3),
+                      blurRadius: 20,
+                      spreadRadius: 2,
+                    )
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.history, size: 24, color: primaryColor),
+                        const SizedBox(width: 12),
+                        Text(
+                          "Track History",
+                          style: GoogleFonts.nunitoSans(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: primaryColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      "We preserve your completed tasks for 30 days so you can revisit achievements. After this period, items are automatically removed to maintain a clean, focused workspace that reflects your current priorities.",
+                      style: GoogleFonts.nunitoSans(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: textPrimary.withValues(alpha: 0.9),
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: TextButton.styleFrom(
+                          foregroundColor: primaryColor,
+                        ),
+                        child: Text(
+                          'GOT IT',
+                          style: GoogleFonts.nunitoSans(
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.1,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

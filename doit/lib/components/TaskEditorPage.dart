@@ -119,7 +119,7 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
             : null;
 
         // Update the task in database
-        database.updateTask(
+        await database.updateTask(
             widget.task!.id,
             _titleController.text,
             _descriptionController.text,
@@ -131,6 +131,8 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                 : "None");
 
         await appProvider.loadTasks();
+        await database.syncEverydayReportsFromTasks();
+        await appProvider.loadEverydayReports();
       } else {
         //Add new task in database
         final id = await database.addTask(
@@ -153,6 +155,8 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
                 minute: _selectedTime!.minute)
             : null;
         await appProvider.loadTasks();
+        await database.syncEverydayReportsFromTasks();
+        await appProvider.loadEverydayReports();
         try {
           database
               .removeFromHistory(DateFormat('yyyy-M-d').format(DateTime.now()));

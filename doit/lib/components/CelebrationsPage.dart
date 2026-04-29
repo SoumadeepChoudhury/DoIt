@@ -30,15 +30,20 @@ class _CelebrationPageState extends State<CelebrationPage> {
   double _opacity = 0.0;
   int? _currentLevel;
 
+  late int totalTasksCompleted;
+
   @override
-  void initState() {
+  void initState() async {
     super.initState();
     // Fetch current level asynchronously
     getCurrentLevel(AppProvider(null)).then((level) {
+      if (!mounted) return;
       setState(() {
         _currentLevel = level;
       });
     });
+
+    totalTasksCompleted = await AppProvider(null).getCompletedTasksCount();
     // Start animation
     Future.delayed(const Duration(milliseconds: 200), () {
       setState(() {
@@ -180,7 +185,7 @@ class _CelebrationPageState extends State<CelebrationPage> {
                             Icon(Icons.star, color: primaryColor, size: 25),
                             const SizedBox(width: 12),
                             Text(
-                              'Total Tasks Completed: ${getCompletedTaskCount(appProvider.tasks)}',
+                              'Total Tasks Completed: $totalTasksCompleted',
                               style: GoogleFonts.nunitoSans(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w700,

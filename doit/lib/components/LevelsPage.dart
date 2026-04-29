@@ -16,10 +16,25 @@ class LevelsPage extends StatefulWidget {
 class _LevelsPageState extends State<LevelsPage> {
   final List<Level> _levels = [];
   int _currentLevel = 1;
+  int? _lastCompletedTasksCount;
+  bool _isLoadingLevels = false;
 
-  Future<void> _loadLevels(appProvider) async {
+  int _getLevelForCompletedTasks(int completedTasks) {
+    int level = 1;
+    while (completedTasks >= getMaxNoOfCompletedTask(level)) {
+      level++;
+    }
+    return level;
+  }
+
+  Future<void> _loadLevels(appProvider, {int? completedTasks}) async {
+    if (_isLoadingLevels) return;
+    _isLoadingLevels = true;
+    final int completedCount =
+        completedTasks ?? await appProvider.getCompletedTasksCount();
     _levels.clear();
-    _currentLevel = await getCurrentLevel(appProvider);
+    _lastCompletedTasksCount = completedCount;
+    _currentLevel = _getLevelForCompletedTasks(completedCount);
     int level = _currentLevel;
     int i = 1;
     while (i <= level + 3) {
@@ -34,7 +49,8 @@ class _LevelsPageState extends State<LevelsPage> {
         _levels.add(Level(
             number: i,
             taskGoal: getMaxNoOfCompletedTask(i),
-            currentTasks: getCompletedTaskCount(appProvider.tasks),
+            // currentTasks: getCompletedTaskCount(appProvider.tasks),
+            currentTasks: completedCount,
             reward: "",
             state: LevelState.inProgress));
       } else {
@@ -49,15 +65,28 @@ class _LevelsPageState extends State<LevelsPage> {
       i++;
     }
 
+    _isLoadingLevels = false;
     if (mounted) setState(() {});
+  }
+
+  Future<void> _refreshLevelsIfNeeded(appProvider) async {
+    if (_isLoadingLevels) return;
+    final int completedCount = await appProvider.getCompletedTasksCount();
+    if (!mounted) return;
+    if (_levels.isEmpty || _lastCompletedTasksCount != completedCount) {
+      await _loadLevels(appProvider, completedTasks: completedCount);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Consumer<AppProvider>(
       builder: (context, appProvider, child) {
-        if (_levels.isEmpty) {
-          _loadLevels(appProvider);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _refreshLevelsIfNeeded(appProvider);
+        });
+
+        if (_levels.isEmpty || _isLoadingLevels) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
@@ -101,7 +130,13 @@ class _LevelsPageState extends State<LevelsPage> {
                     actions: [
                       IconButton(
                         icon: Icon(Icons.info_outline, color: primaryColor),
-                        onPressed: () {
+                        onPressed: () async {
+                          int completedTasks =
+                              await appProvider.getCompletedTasksCount();
+                          int tasksRemaining =
+                              getMaxNoOfCompletedTask(_currentLevel) -
+                                  completedTasks;
+                          if (!mounted) return;
                           showDialog(
                             context: context,
                             barrierColor: Colors.transparent,
@@ -165,7 +200,7 @@ class _LevelsPageState extends State<LevelsPage> {
                                           ),
                                           const SizedBox(height: 16),
                                           Text(
-                                            "Your level increases as you complete tasks. Each level unlocks new achievements and rewards. Complete ${getMaxNoOfCompletedTask(_currentLevel) - getCompletedTaskCount(appProvider.tasks)} tasks to reach Level ${_currentLevel + 1}.",
+                                            "Your level increases as you complete tasks. Each level unlocks new achievements and rewards. Complete $tasksRemaining tasks to reach Level ${_currentLevel + 1}.",
                                             style: GoogleFonts.nunitoSans(
                                               fontSize: 14,
                                               fontWeight: FontWeight.w600,

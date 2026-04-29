@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:developer';
 
+import 'package:doit/models/EverydayModel.dart';
 import 'package:doit/models/TaskModel.dart';
 import 'package:doit/utils/Database.dart';
 import 'package:doit/utils/FileManager.dart';
@@ -21,6 +22,7 @@ class AppProvider extends ChangeNotifier {
   bool isNotificationsEnabled = true;
 
   List<Map<String, dynamic>> completedTasksByDay = [];
+  List<EverydayReport> everydayReports = [];
 
   final Completer<void> _initCompleter = Completer<void>();
   Future<void> get isReady => _initCompleter.future;
@@ -35,7 +37,9 @@ class AppProvider extends ChangeNotifier {
     await loadTasks();
     await loadHistory();
     await loadSettings();
-    checkForIncompleteTaskAndShift___AND___checkForEverydayTask(isProcessing);
+    await checkForIncompleteTaskAndShift___AND___checkForEverydayTask(
+        isProcessing);
+    await loadEverydayReports();
     _loadCompletedTasksHistory();
     _initCompleter.complete();
   }
@@ -61,6 +65,20 @@ class AppProvider extends ChangeNotifier {
     try {
       final list = await database.getAllHistory();
       historyDatesOfAllTaskCompletion = List<String>.from(list);
+      notifyListeners();
+    } catch (e) {}
+  }
+
+  Future<void> loadEverydayReports() async {
+    try {
+      final reports = await database.getEverydayReports();
+      everydayReports =
+          reports.map((report) => EverydayReport.fromMap(report)).toList();
+      everydayReports.sort((a, b) {
+        final progressCompare = a.progress.compareTo(b.progress);
+        if (progressCompare != 0) return progressCompare;
+        return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+      });
       notifyListeners();
     } catch (e) {}
   }
@@ -101,19 +119,20 @@ class AppProvider extends ChangeNotifier {
         );
 
         if (existing.isEmpty) {
-          await database.addTask(task.title, task.description, 0, task.repeat,
-              taskDate, task.time ?? 'None');
+          final int newTaskId = await database.addTask(task.title,
+              task.description, 0, task.repeat, taskDate, task.time ?? 'None');
           await database.updateTask(task.id, task.title, task.description, 1,
               "Once", task.date, task.time ?? 'None');
           try {
             if (task.time != null && isNotificationsEnabled) {
+              final List<String> timeParts = task.time!.split(":");
               Notifications().scheduleNotifications(
-                  id: task.id,
-                  title: task.text,
-                  body: task.text,
+                  id: newTaskId,
+                  title: task.title,
+                  body: task.description,
                   scheduledDate: DateFormat('yyyy-M-d').parse(taskDate),
-                  hour: task.time!.hour,
-                  minute: task.time!.minute);
+                  hour: int.parse(timeParts[0]),
+                  minute: int.parse(timeParts[1]));
             }
           } catch (e) {
             log("Error setting the notification");
@@ -123,7 +142,7 @@ class AppProvider extends ChangeNotifier {
     }
   }
 
-  checkForIncompleteTaskAndShift___AND___checkForEverydayTask(
+  Future<void> checkForIncompleteTaskAndShift___AND___checkForEverydayTask(
       isProcessing) async {
     //Check for the incomplete task in the list and chnage the date to the next day
     if (isProcessing || isProcessing == null) return;
@@ -133,6 +152,8 @@ class AppProvider extends ChangeNotifier {
       await _checkForEverydayTask(task);
     }
     await loadTasks();
+    await database.syncEverydayReportsFromTasks();
+    await loadEverydayReports();
   }
 
   int _getTodayIncompleteTasksCount(List<Task> tasks) {
@@ -187,30 +208,39 @@ class AppProvider extends ChangeNotifier {
       final taskDate = DateFormat('yyyy-M-d').parse(task.date);
       if (taskDate.isBefore(daysAgo) && task.isDone) {
         database.deleteTask(task.id);
-        continue; // Skip tasks older than 7 days
+        continue; // Skip tasks older than 30 days
       }
       if (isSameDate(taskDate, now)) {
         continue;
       }
 
       // Find or create the entry for the task's day
+      final dateKey = DateFormat('yyyy-M-d').format(taskDate);
       final dayKey = DateFormat('MMMM d, yyyy').format(taskDate);
       final dayEntry = completedTasksByDay.firstWhere(
-          (entry) => entry['day'] == dayKey,
-          orElse: () =>
-              {'day': dayKey, 'isAllTaskCompletedDay': false, 'tasks': []});
-      if (historyDatesOfAllTaskCompletion
-          .contains(DateFormat('yyyy-M-d').format(taskDate))) {
+          (entry) => entry['dateKey'] == dateKey,
+          orElse: () => {
+                'dateKey': dateKey,
+                'day': dayKey,
+                'isAllTaskCompletedDay': false,
+                'tasks': []
+              });
+      if (historyDatesOfAllTaskCompletion.contains(dateKey)) {
         dayEntry['isAllTaskCompletedDay'] = true;
       }
 
       task.isDone ? dayEntry['tasks'].add(task.title) : null;
 
       if (!completedTasksByDay.contains(dayEntry)) {
-        completedTasksByDay.add(dayEntry);
+        completedTasksByDay.add(
+            dayEntry); // {'day': dayKey, 'isAllTaskCompletedDay': false, 'tasks': [task.title]}
       }
     }
-    completedTasksByDay = completedTasksByDay.reversed.toList();
+    completedTasksByDay.sort((a, b) {
+      final aDate = DateFormat('yyyy-M-d').parse(a['dateKey']);
+      final bDate = DateFormat('yyyy-M-d').parse(b['dateKey']);
+      return bDate.compareTo(aDate);
+    });
   }
 
   // get the completed task count from the completed table

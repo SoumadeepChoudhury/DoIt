@@ -1,7 +1,9 @@
+import 'dart:async';
+
 import 'package:doit/utils/Colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class DownloadProgressDialog extends StatefulWidget {
   final String? taskId;
@@ -14,44 +16,111 @@ class DownloadProgressDialog extends StatefulWidget {
 
 class _DownloadProgressDialogState extends State<DownloadProgressDialog> {
   double _progress = 0.0;
+  DownloadTaskStatus? _status;
+  Timer? _progressTimer;
+  bool _isOpeningInstaller = false;
 
   @override
   void initState() {
     super.initState();
-    // Set up download progress listener
-    // This is a placeholder - you'll need to implement actual download progress tracking
-    _simulateDownloadProgress();
+    if (widget.taskId == null) {
+      _status = DownloadTaskStatus.failed;
+    } else {
+      _startProgressTracking();
+    }
   }
 
-  void _simulateDownloadProgress() {
-    // Simulate progress updates
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (mounted) {
-        setState(() => _progress = 0.2);
-      }
+  @override
+  void dispose() {
+    _progressTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startProgressTracking() {
+    _refreshProgress();
+    _progressTimer = Timer.periodic(const Duration(milliseconds: 700), (_) {
+      _refreshProgress();
     });
-    Future.delayed(const Duration(seconds: 1), () {
-      if (mounted) {
-        setState(() => _progress = 0.5);
-      }
+  }
+
+  Future<void> _refreshProgress() async {
+    if (widget.taskId == null) return;
+
+    final tasks = await FlutterDownloader.loadTasks();
+    final task = tasks?.cast<DownloadTask?>().firstWhere(
+          (task) => task?.taskId == widget.taskId,
+          orElse: () => null,
+        );
+
+    if (!mounted || task == null) return;
+
+    final progress = task.progress < 0 ? 0 : task.progress.clamp(0, 100);
+    setState(() {
+      _progress = progress / 100;
+      _status = task.status;
     });
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) {
-        setState(() => _progress = 0.8);
-      }
+
+    if (task.status == DownloadTaskStatus.complete ||
+        task.status == DownloadTaskStatus.failed ||
+        task.status == DownloadTaskStatus.canceled) {
+      _progressTimer?.cancel();
+    }
+  }
+
+  Future<void> _openInstaller() async {
+    if (widget.taskId == null || _isOpeningInstaller) return;
+
+    setState(() {
+      _isOpeningInstaller = true;
     });
-    Future.delayed(const Duration(seconds: 3), () {
+
+    try {
+      final installPermission =
+          await Permission.requestInstallPackages.request();
+      if (!installPermission.isGranted) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content:
+                  Text("Please allow app installs to continue the update."),
+            ),
+          );
+        }
+        return;
+      }
+
+      await FlutterDownloader.open(taskId: widget.taskId!);
+    } finally {
       if (mounted) {
-        setState(() => _progress = 1.0);
-        Future.delayed(const Duration(seconds: 1), () {
-          if (mounted) Navigator.pop(context);
+        setState(() {
+          _isOpeningInstaller = false;
         });
       }
-    });
+    }
+  }
+
+  String get _statusText {
+    if (_status == DownloadTaskStatus.complete) return "Download complete";
+    if (_status == DownloadTaskStatus.failed) return "Download failed";
+    if (_status == DownloadTaskStatus.canceled) return "Download canceled";
+    if (_status == DownloadTaskStatus.paused) return "Download paused";
+    if (_status == DownloadTaskStatus.enqueued) return "Waiting to start";
+    return "Downloading update";
   }
 
   @override
   Widget build(BuildContext context) {
+    final isComplete = _status == DownloadTaskStatus.complete;
+    final isFinished = _status == DownloadTaskStatus.complete ||
+        _status == DownloadTaskStatus.failed ||
+        _status == DownloadTaskStatus.canceled;
+    final actionColor = isComplete
+        ? primaryColor
+        : isFinished
+            ? Colors.white.withValues(alpha: 0.16)
+            : Colors.red.withValues(alpha: 0.8);
+    final actionTextColor = isComplete ? Colors.black : textPrimary;
+
     return Dialog(
       backgroundColor: surfaceColor.withValues(alpha: 0.95),
       shape: RoundedRectangleBorder(
@@ -75,8 +144,8 @@ class _DownloadProgressDialogState extends State<DownloadProgressDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              "Downloading Update",
-              style: GoogleFonts.nunitoSans(
+              _statusText,
+              style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w800,
                 color: primaryColor,
@@ -86,7 +155,7 @@ class _DownloadProgressDialogState extends State<DownloadProgressDialog> {
             SizedBox(
               height: 8,
               child: LinearProgressIndicator(
-                value: _progress,
+                value: widget.taskId == null && !isFinished ? null : _progress,
                 backgroundColor: Colors.white.withValues(alpha: 0.1),
                 valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
                 borderRadius: BorderRadius.circular(4),
@@ -95,7 +164,7 @@ class _DownloadProgressDialogState extends State<DownloadProgressDialog> {
             const SizedBox(height: 16),
             Text(
               "${(_progress * 100).toStringAsFixed(0)}% Complete",
-              style: GoogleFonts.nunitoSans(
+              style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
                 color: textPrimary.withValues(alpha: 0.8),
@@ -103,9 +172,15 @@ class _DownloadProgressDialogState extends State<DownloadProgressDialog> {
             ),
             const SizedBox(height: 24),
             Text(
-              "Installation will begin automatically when download completes",
+              isComplete
+                  ? "Download complete. Tap Install Update to open the Android installer."
+                  : _status == DownloadTaskStatus.failed
+                      ? "The update download could not be completed. Please try again."
+                      : _status == DownloadTaskStatus.canceled
+                          ? "Download canceled."
+                          : "Please keep the app open while the update downloads.",
               textAlign: TextAlign.center,
-              style: GoogleFonts.nunitoSans(
+              style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
                 color: textPrimary.withValues(alpha: 0.6),
@@ -114,14 +189,22 @@ class _DownloadProgressDialogState extends State<DownloadProgressDialog> {
             ),
             const SizedBox(height: 20),
             ElevatedButton(
-              onPressed: () {
-                if (widget.taskId != null) {
-                  FlutterDownloader.cancel(taskId: widget.taskId!);
-                }
-                Navigator.pop(context);
-              },
+              onPressed: _isOpeningInstaller
+                  ? null
+                  : isComplete
+                      ? _openInstaller
+                      : isFinished
+                          ? () => Navigator.pop(context)
+                          : () {
+                              if (widget.taskId != null) {
+                                FlutterDownloader.cancel(
+                                    taskId: widget.taskId!);
+                              }
+                              Navigator.pop(context);
+                            },
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red.withValues(alpha: 0.8),
+                backgroundColor: actionColor,
+                disabledBackgroundColor: primaryColor.withValues(alpha: 0.45),
                 padding:
                     const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                 shape: RoundedRectangleBorder(
@@ -129,10 +212,17 @@ class _DownloadProgressDialogState extends State<DownloadProgressDialog> {
                 ),
               ),
               child: Text(
-                "CANCEL DOWNLOAD",
-                style: GoogleFonts.nunitoSans(
+                _isOpeningInstaller
+                    ? "OPENING..."
+                    : isComplete
+                        ? "INSTALL UPDATE"
+                        : isFinished
+                            ? "CLOSE"
+                            : "CANCEL DOWNLOAD",
+                style: TextStyle(
                   fontWeight: FontWeight.w700,
                   fontSize: 14,
+                  color: actionTextColor,
                 ),
               ),
             ),

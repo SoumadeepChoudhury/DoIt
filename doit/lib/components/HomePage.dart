@@ -1,6 +1,4 @@
 // home_page.dart
-import 'dart:io';
-
 import 'package:doit/components/CelebrationsPage.dart';
 import 'package:doit/components/TaskCompletionOverlay.dart';
 import 'package:doit/components/TaskEditorPage.dart';
@@ -13,9 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:lottie/lottie.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
-import 'package:sqflite/sqflite.dart';
 
 /*
 showDialog(
@@ -174,16 +170,18 @@ class _HomePageState extends State<HomePage> {
       }
       // Check the level and navigate to the CelebrationPage
 
-      if (appProvider.tasks.isNotEmpty &&
-          AppProvider(null).getCompletedTasksCount() ==
-              getMaxNoOfCompletedTask(_currentLevel) &&
-          !appProvider.celebrationShown) {
-        appProvider.celebrationShown = !appProvider.celebrationShown;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => CelebrationPage()),
-          );
+      if (appProvider.tasks.isNotEmpty && !appProvider.celebrationShown) {
+        appProvider.getCompletedTasksCount().then((completedCount) {
+          if (!mounted) return;
+          if (completedCount == getMaxNoOfCompletedTask(_currentLevel)) {
+            appProvider.celebrationShown = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => CelebrationPage()),
+              );
+            });
+          }
         });
       }
       return Container(
@@ -228,12 +226,13 @@ class _HomePageState extends State<HomePage> {
                 if (isSelectionMode)
                   IconButton(
                     icon: const Icon(Icons.delete, color: Colors.redAccent),
-                    onPressed: () {
+                    onPressed: () async {
                       // Multi-delete logic
                       for (var id in selectedTaskIds) {
-                        database.deleteTask(id);
+                        await database.deleteTask(id);
                       }
                       appProvider.loadTasks();
+                      await appProvider.loadEverydayReports();
                       setState(() {
                         isSelectionMode = false;
                         selectedTaskIds.clear();
@@ -485,7 +484,7 @@ class _HomePageState extends State<HomePage> {
                             isDone: task.isDone,
                             onChanged: (value) async {
                               // Set the tasks isDone to true
-                              database.updateTask(
+                              await database.updateTask(
                                   task.id,
                                   task.title,
                                   task.description,
@@ -504,6 +503,18 @@ class _HomePageState extends State<HomePage> {
                               value
                                   ? await database.incrementCompletedCount()
                                   : await database.decrementCompletedCount();
+                              value
+                                  ? await database
+                                      .incrementEverydayReportCompletedCount(
+                                          task.title,
+                                          task.description,
+                                          task.date)
+                                  : await database
+                                      .decrementEverydayReportCompletedCount(
+                                          task.title,
+                                          task.description,
+                                          task.date);
+                              await appProvider.loadEverydayReports();
                               updatePercentage(appProvider);
                             },
                             primaryColor: primaryColor,
@@ -523,7 +534,7 @@ class _HomePageState extends State<HomePage> {
                             isDone: task.isDone,
                             onChanged: (value) async {
                               // Set the tasks isDone to true
-                              database.updateTask(
+                              await database.updateTask(
                                   task.id,
                                   task.title,
                                   task.description,
@@ -542,6 +553,18 @@ class _HomePageState extends State<HomePage> {
                               value
                                   ? await database.incrementCompletedCount()
                                   : await database.decrementCompletedCount();
+                              value
+                                  ? await database
+                                      .incrementEverydayReportCompletedCount(
+                                          task.title,
+                                          task.description,
+                                          task.date)
+                                  : await database
+                                      .decrementEverydayReportCompletedCount(
+                                          task.title,
+                                          task.description,
+                                          task.date);
+                              await appProvider.loadEverydayReports();
                               updatePercentage(appProvider);
                             },
                             primaryColor: primaryColor,
@@ -700,10 +723,11 @@ class _HomePageState extends State<HomePage> {
               side: BorderSide(
                   color: primaryColor.withValues(alpha: 0.2), width: 1),
             ),
-            onSelected: (value) {
+            onSelected: (value) async {
               if (value == 'delete') {
-                database.deleteTask(task!.id);
-                appProvider.loadTasks();
+                await database.deleteTask(task!.id);
+                await appProvider.loadTasks();
+                await appProvider.loadEverydayReports();
               }
             },
             itemBuilder: (BuildContext context) => [
