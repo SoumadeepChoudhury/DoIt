@@ -245,17 +245,6 @@ class AppProvider extends ChangeNotifier {
 
   // get the completed task count from the completed table
   Future<int> getCompletedTasksCount() async {
-    // get count from completed table
-    final completedTaskCount = await database.getCompletedTasksCount();
-    // get count from history table
-    int prevHistoryCount = 0;
-    tasks.forEach((task) {
-      DateTime taskDate = DateFormat('yyyy-M-d').parse(task.date);
-      if (task.isDone &&
-          taskDate.isBefore(DateFormat('yyyy-M-d').parse("2026-4-3"))) {
-        prevHistoryCount++;
-      }
-    });
-    return completedTaskCount + prevHistoryCount;
+    return await database.getCompletedTasksCount();
   }
 }

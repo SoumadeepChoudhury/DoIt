@@ -1,7 +1,7 @@
 name: doit
 description: "A new Flutter project."
 publish_to: 'none'
-version: 0.1.8+14
+version: 0.1.9+15
 
 environment:
   sdk: ^3.6.1
@@ -36,3 +36,4 @@ flutter:
     - assets/images/
     - assets/json/
     - assets/documents/
+    - google_fonts/

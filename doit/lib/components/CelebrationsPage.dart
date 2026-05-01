@@ -25,15 +25,15 @@ class CelebrationPage extends StatefulWidget {
 }
 
 class _CelebrationPageState extends State<CelebrationPage> {
-  late Timer _timer;
+  Timer? _timer;
   double _scale = 0.0;
   double _opacity = 0.0;
   int? _currentLevel;
 
-  late int totalTasksCompleted;
+  int totalTasksCompleted = 0;
 
   @override
-  void initState() async {
+  void initState() {
     super.initState();
     // Fetch current level asynchronously
     getCurrentLevel(AppProvider(null)).then((level) {
@@ -43,9 +43,11 @@ class _CelebrationPageState extends State<CelebrationPage> {
       });
     });
 
-    totalTasksCompleted = await AppProvider(null).getCompletedTasksCount();
+    _loadTotalTasksCompleted();
+
     // Start animation
     Future.delayed(const Duration(milliseconds: 200), () {
+      if (!mounted) return;
       setState(() {
         _scale = 1.0;
         _opacity = 1.0;
@@ -58,9 +60,17 @@ class _CelebrationPageState extends State<CelebrationPage> {
     });
   }
 
+  Future<void> _loadTotalTasksCompleted() async {
+    final completedCount = await AppProvider(null).getCompletedTasksCount();
+    if (!mounted) return;
+    setState(() {
+      totalTasksCompleted = completedCount;
+    });
+  }
+
   @override
   void dispose() {
-    _timer.cancel();
+    _timer?.cancel();
     super.dispose();
   }
 

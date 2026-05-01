@@ -20,10 +20,10 @@ class _TaskCompletionOverlayState extends State<TaskCompletionOverlay>
   late Animation<double> _opacityAnimation;
   late Future<int> currentLevel;
 
-  late int totalTaskCompleted;
+  int totalTaskCompleted = 0;
 
   @override
-  void initState() async {
+  void initState() {
     super.initState();
 
     _controller = AnimationController(
@@ -41,7 +41,15 @@ class _TaskCompletionOverlayState extends State<TaskCompletionOverlay>
 
     _controller.forward();
     currentLevel = getCurrentLevel(AppProvider(null));
-    totalTaskCompleted = await AppProvider(null).getCompletedTasksCount();
+    _loadTotalTaskCompleted();
+  }
+
+  Future<void> _loadTotalTaskCompleted() async {
+    final completedCount = await AppProvider(null).getCompletedTasksCount();
+    if (!mounted) return;
+    setState(() {
+      totalTaskCompleted = completedCount;
+    });
   }
 
   @override
