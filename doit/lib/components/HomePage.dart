@@ -40,6 +40,7 @@ class _HomePageState extends State<HomePage> {
   bool _isUpdatingProgress = false;
   bool isSelectionMode = false;
   Set<int> selectedTaskIds = {};
+  final Set<int> _updatingTaskIds = {};
 
   String screenTitle = "Today's Tasks";
 
@@ -550,39 +551,52 @@ class _HomePageState extends State<HomePage> {
                             title: task.title,
                             isDone: task.isDone,
                             onChanged: (value) async {
-                              // Set the tasks isDone to true
-                              await database.updateTask(
-                                  task.id,
-                                  task.title,
-                                  task.description,
-                                  value! ? 1 : 0,
-                                  task.repeat,
-                                  task.date,
-                                  task.time != null ? task.time! : "None");
-                              setState(() {
-                                task.isDone = value;
-                              });
-                              !value
-                                  ? database.removeFromHistory(
-                                      DateFormat('yyyy-M-d').format(taskDate))
-                                  : null;
-                              await appProvider.loadHistory();
-                              value
-                                  ? await database.incrementCompletedCount()
-                                  : await database.decrementCompletedCount();
-                              value
-                                  ? await database
-                                      .incrementEverydayReportCompletedCount(
-                                          task.title,
-                                          task.description,
-                                          task.date)
-                                  : await database
-                                      .decrementEverydayReportCompletedCount(
-                                          task.title,
-                                          task.description,
-                                          task.date);
-                              await appProvider.loadEverydayReports();
-                              updatePercentage(appProvider);
+                              final newIsDone = value ?? false;
+                              if (task.isDone == newIsDone ||
+                                  _updatingTaskIds.contains(task.id)) {
+                                return;
+                              }
+
+                              _updatingTaskIds.add(task.id);
+                              try {
+                                // Set the tasks isDone to true
+                                await database.updateTask(
+                                    task.id,
+                                    task.title,
+                                    task.description,
+                                    newIsDone ? 1 : 0,
+                                    task.repeat,
+                                    task.date,
+                                    task.time != null ? task.time! : "None");
+                                setState(() {
+                                  task.isDone = newIsDone;
+                                });
+                                !newIsDone
+                                    ? database.removeFromHistory(
+                                        DateFormat('yyyy-M-d').format(taskDate))
+                                    : null;
+                                await appProvider.loadHistory();
+                                newIsDone
+                                    ? await database.incrementCompletedCount()
+                                    : await database.decrementCompletedCount();
+                                if (task.repeat == "Everyday") {
+                                  newIsDone
+                                      ? await database
+                                          .incrementEverydayReportCompletedCount(
+                                              task.title,
+                                              task.description,
+                                              task.date)
+                                      : await database
+                                          .decrementEverydayReportCompletedCount(
+                                              task.title,
+                                              task.description,
+                                              task.date);
+                                }
+                                await appProvider.loadEverydayReports();
+                                updatePercentage(appProvider);
+                              } finally {
+                                _updatingTaskIds.remove(task.id);
+                              }
                             },
                             primaryColor: primaryColor,
                             surfaceColor: surfaceColor,
@@ -600,39 +614,52 @@ class _HomePageState extends State<HomePage> {
                             title: task.title,
                             isDone: task.isDone,
                             onChanged: (value) async {
-                              // Set the tasks isDone to true
-                              await database.updateTask(
-                                  task.id,
-                                  task.title,
-                                  task.description,
-                                  value! ? 1 : 0,
-                                  task.repeat,
-                                  task.date,
-                                  task.time != null ? task.time! : "None");
-                              setState(() {
-                                task.isDone = value;
-                              });
-                              !value
-                                  ? database.removeFromHistory(
-                                      DateFormat('yyyy-M-d').format(taskDate))
-                                  : null;
-                              await appProvider.loadHistory();
-                              value
-                                  ? await database.incrementCompletedCount()
-                                  : await database.decrementCompletedCount();
-                              value
-                                  ? await database
-                                      .incrementEverydayReportCompletedCount(
-                                          task.title,
-                                          task.description,
-                                          task.date)
-                                  : await database
-                                      .decrementEverydayReportCompletedCount(
-                                          task.title,
-                                          task.description,
-                                          task.date);
-                              await appProvider.loadEverydayReports();
-                              updatePercentage(appProvider);
+                              final newIsDone = value ?? false;
+                              if (task.isDone == newIsDone ||
+                                  _updatingTaskIds.contains(task.id)) {
+                                return;
+                              }
+
+                              _updatingTaskIds.add(task.id);
+                              try {
+                                // Set the tasks isDone to true
+                                await database.updateTask(
+                                    task.id,
+                                    task.title,
+                                    task.description,
+                                    newIsDone ? 1 : 0,
+                                    task.repeat,
+                                    task.date,
+                                    task.time != null ? task.time! : "None");
+                                setState(() {
+                                  task.isDone = newIsDone;
+                                });
+                                !newIsDone
+                                    ? database.removeFromHistory(
+                                        DateFormat('yyyy-M-d').format(taskDate))
+                                    : null;
+                                await appProvider.loadHistory();
+                                newIsDone
+                                    ? await database.incrementCompletedCount()
+                                    : await database.decrementCompletedCount();
+                                if (task.repeat == "Everyday") {
+                                  newIsDone
+                                      ? await database
+                                          .incrementEverydayReportCompletedCount(
+                                              task.title,
+                                              task.description,
+                                              task.date)
+                                      : await database
+                                          .decrementEverydayReportCompletedCount(
+                                              task.title,
+                                              task.description,
+                                              task.date);
+                                }
+                                await appProvider.loadEverydayReports();
+                                updatePercentage(appProvider);
+                              } finally {
+                                _updatingTaskIds.remove(task.id);
+                              }
                             },
                             primaryColor: primaryColor,
                             surfaceColor: surfaceColor,

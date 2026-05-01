@@ -36,7 +36,7 @@ class AppDatabase {
 
     final database = await openDatabase(
       databasePath,
-      version: 4,
+      version: 5,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE tasks (
@@ -84,6 +84,12 @@ class AppDatabase {
           await _syncEverydayReportsFromTasks(db);
           print(
               "Database upgraded to version 4: added 'everyday_report_months' table.");
+        }
+        if (oldVersion < 5) {
+          await _syncEverydayReportsFromTasks(db);
+          await _repairCompletedCountFromReports(db);
+          print(
+              "Database upgraded to version 5: repaired completed count from existing reports once.");
         }
       },
     );
@@ -202,7 +208,6 @@ class AppDatabase {
 
   Future<int> getCompletedTasksCount() async {
     final db = await database;
-    await syncEverydayReportsFromTasks();
 
     final result = await db.rawQuery('SELECT count FROM completed where id=1');
     final completedTableCount = Sqflite.firstIntValue(result) ?? 0;
@@ -211,6 +216,27 @@ class AppDatabase {
     );
     final completedTaskRowsCount = Sqflite.firstIntValue(taskResult) ?? 0;
 
+    final repairedCount = _maxInt(completedTableCount, completedTaskRowsCount);
+
+    if (repairedCount > completedTableCount) {
+      await db.insert(
+        'completed',
+        {'id': 1, 'count': repairedCount},
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+
+    return repairedCount;
+  }
+
+  Future<void> _repairCompletedCountFromReports(DatabaseExecutor db) async {
+    final completedResult =
+        await db.rawQuery('SELECT count FROM completed where id=1');
+    final completedTableCount = Sqflite.firstIntValue(completedResult) ?? 0;
+    final taskResult = await db.rawQuery(
+      'SELECT COUNT(*) FROM $tableName WHERE $columnIsDone = 1',
+    );
+    final completedTaskRowsCount = Sqflite.firstIntValue(taskResult) ?? 0;
     final reportResult = await db.rawQuery(
       'SELECT COALESCE(SUM($columnCompletedCount), 0) '
       'FROM $everydayReportMonthsTable',
@@ -229,8 +255,6 @@ class AppDatabase {
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     }
-
-    return repairedCount;
   }
 
   // Get All History
@@ -634,10 +658,7 @@ class AppDatabase {
       final completedFromTasks =
           relatedTasks.where((task) => task[columnIsDone] == 1).length;
       final completedCount = existingReports.isNotEmpty
-          ? _maxInt(
-              existingReports.first[columnCompletedCount] as int? ?? 0,
-              completedFromTasks,
-            )
+          ? existingReports.first[columnCompletedCount] as int? ?? 0
           : completedFromTasks;
 
       await db.insert(
@@ -670,6 +691,29 @@ class AppDatabase {
           keepHistoricalMonths: true,
         );
       }
+    }
+
+    await _syncAggregateEverydayReportCounts(db);
+  }
+
+  Future<void> _syncAggregateEverydayReportCounts(DatabaseExecutor db) async {
+    final reports = await db.query(everydayReportsTable);
+    for (final report in reports) {
+      final title = (report[columnTitle] ?? '').toString().trim();
+      final description = (report[columnDescription] ?? '').toString().trim();
+      final result = await db.rawQuery(
+        'SELECT COALESCE(SUM($columnCompletedCount), 0) '
+        'FROM $everydayReportMonthsTable '
+        'WHERE $columnTitle = ? AND $columnDescription = ?',
+        [title, description],
+      );
+
+      await db.update(
+        everydayReportsTable,
+        {columnCompletedCount: Sqflite.firstIntValue(result) ?? 0},
+        where: '$columnTitle = ? AND $columnDescription = ?',
+        whereArgs: [title, description],
+      );
     }
   }
 
@@ -740,10 +784,7 @@ class AppDatabase {
               taskDate.month == cursor.month;
         }).length;
         final completedCount = existingMonthRows.isNotEmpty
-            ? _maxInt(
-                existingMonthRows.first[columnCompletedCount] as int? ?? 0,
-                completedFromTasks,
-              )
+            ? existingMonthRows.first[columnCompletedCount] as int? ?? 0
             : completedFromTasks;
 
         await db.insert(
