@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 
 import 'package:doit/components/DownloadProgress.dart';
@@ -11,6 +12,10 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:http/http.dart' as http;
+
+String? _activeUpdateDownloadTaskId;
+Timer? _updateDownloadWatcher;
+bool _isUpdateDownloadDialogVisible = false;
 
 String generateRewardName(int level) {
   final prefixes = [
@@ -135,18 +140,6 @@ Future<int> getPercentage(AppProvider appProvider, int level) async {
 void checkUpdate(BuildContext context) async {
   if (!context.mounted) return;
 
-  // Checking for active downloads
-  final tasks = await FlutterDownloader.loadTasks();
-
-  bool isDownloading = tasks?.any((task) =>
-          task.status == DownloadTaskStatus.running ||
-          task.status == DownloadTaskStatus.enqueued) ??
-      false;
-
-  if (isDownloading) {
-    print("Update check skipped: Download already in progress.");
-    return; // Exit early
-  }
   try {
     final response = await http.get(
         Uri.parse(
@@ -164,17 +157,10 @@ void checkUpdate(BuildContext context) async {
         latest_version_code =
             tagName.startsWith("v") ? tagName.substring(1) : tagName;
         print("LVC: " + latest_version_code);
-        //Deleteing existing file
         String path = (await getExternalStorageDirectory())?.path ??
             "/storage/emulated/0/Download";
+        await _deleteOldUpdateApks(path, latest_version_code);
         File file = File("$path/app-release-v$latest_version_code.apk");
-        if (await file.exists()) {
-          try {
-            await file.delete();
-          } on FileSystemException catch (_) {
-            print("Can't delete the file");
-          }
-        }
 
         final info = await PackageInfo.fromPlatform();
         String current_version_code = info.version;
@@ -190,6 +176,37 @@ void checkUpdate(BuildContext context) async {
               );
           url = apkAsset?["browser_download_url"]?.toString() ??
               "https://github.com/SoumadeepChoudhury/DoIt/releases/download/v$latest_version_code/app-release.apk";
+
+          final existingLatestDownload =
+              await _getExistingUpdateDownloadTask(latest_version_code);
+          if (existingLatestDownload != null) {
+            if (existingLatestDownload.status == DownloadTaskStatus.complete &&
+                await file.exists()) {
+              _activeUpdateDownloadTaskId = existingLatestDownload.taskId;
+              if (!context.mounted) return;
+              _showUpdateDownloadDialog(context, existingLatestDownload.taskId);
+              return;
+            }
+
+            if (existingLatestDownload.status == DownloadTaskStatus.running ||
+                existingLatestDownload.status == DownloadTaskStatus.enqueued ||
+                existingLatestDownload.status == DownloadTaskStatus.paused) {
+              _activeUpdateDownloadTaskId = existingLatestDownload.taskId;
+              if (!context.mounted) return;
+              _watchUpdateDownload(context, existingLatestDownload.taskId);
+              _showUpdateDownloadDialog(context, existingLatestDownload.taskId);
+              return;
+            }
+          }
+
+          if (await file.exists()) {
+            try {
+              await file.delete();
+            } on FileSystemException catch (_) {
+              print("Can't delete the file");
+            }
+          }
+
           if (!context.mounted) return;
           showDialog(
             context: context,
@@ -301,12 +318,7 @@ void checkUpdate(BuildContext context) async {
                                 url, latest_version_code, context);
                             if (!context.mounted) return;
                             // Show download started dialog
-                            showDialog(
-                              context: context,
-                              barrierColor: Colors.black.withValues(alpha: 0.7),
-                              builder: (context) =>
-                                  DownloadProgressDialog(taskId: taskId),
-                            );
+                            _showUpdateDownloadDialog(context, taskId);
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: primaryColor,
@@ -360,10 +372,118 @@ Future<String?> downloadAndInstallAPK(
       openFileFromNotification: notificationPermission.isGranted,
     );
 
+    _activeUpdateDownloadTaskId = taskId;
+    if (taskId != null && context.mounted) {
+      _watchUpdateDownload(context, taskId);
+    }
+
     return taskId;
   } catch (e) {
     print("Failed to start update download.");
     return null;
+  }
+}
+
+void _showUpdateDownloadDialog(BuildContext context, String? taskId) {
+  if (!context.mounted || taskId == null || _isUpdateDownloadDialogVisible) {
+    return;
+  }
+
+  _isUpdateDownloadDialogVisible = true;
+  showDialog(
+    context: context,
+    barrierColor: Colors.black.withValues(alpha: 0.7),
+    barrierDismissible: true,
+    builder: (context) => DownloadProgressDialog(taskId: taskId),
+  ).whenComplete(() {
+    _isUpdateDownloadDialogVisible = false;
+  });
+}
+
+void _watchUpdateDownload(BuildContext context, String taskId) {
+  _updateDownloadWatcher?.cancel();
+  _updateDownloadWatcher =
+      Timer.periodic(const Duration(seconds: 1), (timer) async {
+    if (!context.mounted) {
+      timer.cancel();
+      return;
+    }
+
+    final tasks = await FlutterDownloader.loadTasks();
+    final task = tasks?.cast<DownloadTask?>().firstWhere(
+          (task) => task?.taskId == taskId,
+          orElse: () => null,
+        );
+
+    if (!context.mounted || task == null) {
+      if (!context.mounted) timer.cancel();
+      return;
+    }
+
+    if (task.status == DownloadTaskStatus.complete) {
+      timer.cancel();
+      _activeUpdateDownloadTaskId = task.taskId;
+      _showUpdateDownloadDialog(context, task.taskId);
+      return;
+    }
+
+    if (task.status == DownloadTaskStatus.failed ||
+        task.status == DownloadTaskStatus.canceled) {
+      timer.cancel();
+      if (_activeUpdateDownloadTaskId == task.taskId) {
+        _activeUpdateDownloadTaskId = null;
+      }
+    }
+  });
+}
+
+Future<DownloadTask?> _getExistingUpdateDownloadTask(String version) async {
+  final tasks = await FlutterDownloader.loadTasks();
+  final fileName = 'app-release-v$version.apk';
+  final matchingTasks = tasks
+          ?.where((task) => task.filename == fileName)
+          .toList()
+          .reversed
+          .toList() ??
+      [];
+
+  for (final task in matchingTasks) {
+    if (task.status == DownloadTaskStatus.running ||
+        task.status == DownloadTaskStatus.enqueued ||
+        task.status == DownloadTaskStatus.paused) {
+      return task;
+    }
+  }
+
+  for (final task in matchingTasks) {
+    if (task.status == DownloadTaskStatus.complete) {
+      return task;
+    }
+  }
+
+  return matchingTasks.isEmpty ? null : matchingTasks.first;
+}
+
+Future<void> _deleteOldUpdateApks(
+    String directoryPath, String latestVersion) async {
+  final directory = Directory(directoryPath);
+  if (!await directory.exists()) return;
+
+  final latestFileName = 'app-release-v$latestVersion.apk';
+  await for (final entity in directory.list()) {
+    if (entity is! File) continue;
+
+    final fileName =
+        entity.uri.pathSegments.isEmpty ? '' : entity.uri.pathSegments.last;
+    final isUpdateApk =
+        fileName.startsWith('app-release-v') && fileName.endsWith('.apk');
+    if (!isUpdateApk || fileName == latestFileName) continue;
+
+    try {
+      await entity.delete();
+    } on FileSystemException catch (_) {
+      print("Can't delete old update file");
+    }
   }
 }
 

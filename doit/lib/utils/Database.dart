@@ -202,22 +202,35 @@ class AppDatabase {
 
   Future<int> getCompletedTasksCount() async {
     final db = await database;
+    await syncEverydayReportsFromTasks();
+
     final result = await db.rawQuery('SELECT count FROM completed where id=1');
     final completedTableCount = Sqflite.firstIntValue(result) ?? 0;
     final taskResult = await db.rawQuery(
       'SELECT COUNT(*) FROM $tableName WHERE $columnIsDone = 1',
     );
     final completedTaskRowsCount = Sqflite.firstIntValue(taskResult) ?? 0;
-    if (completedTaskRowsCount > completedTableCount) {
-      await db.update(
+
+    final reportResult = await db.rawQuery(
+      'SELECT COALESCE(SUM($columnCompletedCount), 0) '
+      'FROM $everydayReportMonthsTable',
+    );
+    final everydayReportCompletedCount =
+        Sqflite.firstIntValue(reportResult) ?? 0;
+    final repairedCount = _maxInt(
+      completedTableCount,
+      _maxInt(completedTaskRowsCount, everydayReportCompletedCount),
+    );
+
+    if (repairedCount > completedTableCount) {
+      await db.insert(
         'completed',
-        {'count': completedTaskRowsCount},
-        where: 'id = ?',
-        whereArgs: [1],
+        {'id': 1, 'count': repairedCount},
+        conflictAlgorithm: ConflictAlgorithm.replace,
       );
-      return completedTaskRowsCount;
     }
-    return completedTableCount;
+
+    return repairedCount;
   }
 
   // Get All History
@@ -641,6 +654,7 @@ class AppDatabase {
     }
 
     await _syncEverydayReportMonthsFromTasks(db, tasks, activeKeys);
+    await _deleteExpiredEverydayReportMonths(db, activeKeys);
 
     final reports = await db.query(everydayReportsTable);
     for (final report in reports) {
@@ -653,6 +667,7 @@ class AppDatabase {
           db,
           (report[columnTitle] ?? '').toString().trim(),
           (report[columnDescription] ?? '').toString().trim(),
+          keepHistoricalMonths: true,
         );
       }
     }
@@ -697,6 +712,10 @@ class AppDatabase {
               (aggregateRows.first[columnStartDate] ?? '').toString())
           : null;
       DateTime cursor = _monthOnly(aggregateStartDate ?? parsedDates.first);
+      final retentionStart = _sixMonthWindowStart();
+      if (cursor.isBefore(retentionStart)) {
+        cursor = retentionStart;
+      }
 
       while (!cursor.isAfter(currentMonth)) {
         final month = DateFormat('yyyy-M').format(cursor);
@@ -764,10 +783,8 @@ class AppDatabase {
   }
 
   Future<void> _cleanupInactiveEverydayReport(
-    DatabaseExecutor db,
-    String title,
-    String description,
-  ) async {
+      DatabaseExecutor db, String title, String description,
+      {bool keepHistoricalMonths = false}) async {
     final now = DateTime.now();
     final currentMonth = DateFormat('yyyy-M').format(now);
 
@@ -777,6 +794,27 @@ class AppDatabase {
           '$columnTitle = ? AND $columnDescription = ? AND $columnMonth = ? AND $columnCompletedCount <= 0',
       whereArgs: [title, description, currentMonth],
     );
+
+    if (!keepHistoricalMonths) {
+      final cutoffMonth = DateFormat('yyyy-M').format(_sixMonthWindowStart());
+      final monthRows = await db.query(
+        everydayReportMonthsTable,
+        columns: [columnId, columnMonth],
+        where: '$columnTitle = ? AND $columnDescription = ?',
+        whereArgs: [title, description],
+      );
+      for (final row in monthRows) {
+        final rowMonth = _tryParseMonth((row[columnMonth] ?? '').toString());
+        final cutoff = _tryParseMonth(cutoffMonth);
+        if (rowMonth != null && cutoff != null && rowMonth.isBefore(cutoff)) {
+          await db.delete(
+            everydayReportMonthsTable,
+            where: '$columnId = ?',
+            whereArgs: [row[columnId]],
+          );
+        }
+      }
+    }
 
     final remainingMonths = await db.query(
       everydayReportMonthsTable,
@@ -791,6 +829,47 @@ class AppDatabase {
         where: '$columnTitle = ? AND $columnDescription = ?',
         whereArgs: [title, description],
       );
+    }
+  }
+
+  Future<void> _deleteExpiredEverydayReportMonths(
+    DatabaseExecutor db,
+    Set<String> activeKeys,
+  ) async {
+    final cutoff = _sixMonthWindowStart();
+    final rows = await db.query(everydayReportMonthsTable);
+
+    for (final row in rows) {
+      final monthDate = _tryParseMonth((row[columnMonth] ?? '').toString());
+      if (monthDate == null || !monthDate.isBefore(cutoff)) continue;
+
+      await db.delete(
+        everydayReportMonthsTable,
+        where: '$columnId = ?',
+        whereArgs: [row[columnId]],
+      );
+    }
+
+    final reports = await db.query(everydayReportsTable);
+    for (final report in reports) {
+      final title = (report[columnTitle] ?? '').toString().trim();
+      final description = (report[columnDescription] ?? '').toString().trim();
+      final reportKey = _everydayReportKey(title, description);
+      if (activeKeys.contains(reportKey)) continue;
+
+      final remainingMonths = await db.query(
+        everydayReportMonthsTable,
+        where: '$columnTitle = ? AND $columnDescription = ?',
+        whereArgs: [title, description],
+        limit: 1,
+      );
+      if (remainingMonths.isEmpty) {
+        await db.delete(
+          everydayReportsTable,
+          where: '$columnId = ?',
+          whereArgs: [report[columnId]],
+        );
+      }
     }
   }
 
@@ -829,6 +908,11 @@ class AppDatabase {
 
   DateTime _monthOnly(DateTime date) {
     return DateTime(date.year, date.month);
+  }
+
+  DateTime _sixMonthWindowStart() {
+    final now = DateTime.now();
+    return _addMonths(DateTime(now.year, now.month), -5);
   }
 
   DateTime _addMonths(DateTime date, int months) {
